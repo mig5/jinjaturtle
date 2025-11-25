@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import configparser
+import json
 from pathlib import Path
 from typing import Any, Iterable
-
 import yaml
+
+try:
+    from ruamel.yaml import YAML as RuamelYAML  # for comment-preserving YAML
+except ImportError:  # pragma: no cover
+    RuamelYAML = None
 
 try:
     import tomllib  # Python 3.11+
@@ -34,25 +39,9 @@ def _quoted_str_representer(dumper: yaml.SafeDumper, data: QuotedString):
 _TurtleDumper.add_representer(QuotedString, _quoted_str_representer)
 
 
-def _normalize_default_value(value: Any) -> Any:
-    """
-    Ensure that 'true' / 'false' end up as quoted strings in YAML, not booleans.
-
-    - bool -> QuotedString("true"/"false")
-    - "true"/"false" (any case) -> QuotedString(original_text)
-    - everything else -> unchanged
-    """
-    if isinstance(value, bool):
-        # YAML booleans are lower-case; we keep them as strings.
-        return QuotedString("true" if value else "false")
-    if isinstance(value, str) and value.lower() in {"true", "false"}:
-        return QuotedString(value)
-    return value
-
-
 def detect_format(path: Path, explicit: str | None = None) -> str:
     """
-    Determine config format (toml vs ini-ish) from argument or filename.
+    Determine config format (toml, yaml, ini-ish) from argument or filename.
     """
     if explicit:
         return explicit
@@ -60,6 +49,10 @@ def detect_format(path: Path, explicit: str | None = None) -> str:
     name = path.name.lower()
     if suffix == ".toml":
         return "toml"
+    if suffix in {".yaml", ".yml"}:
+        return "yaml"
+    if suffix == ".json":
+        return "json"
     if suffix in {".ini", ".cfg", ".conf"} or name.endswith(".ini"):
         return "ini"
     # Fallback: treat as INI-ish
@@ -82,6 +75,24 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
             )
         with path.open("rb") as f:
             data = tomllib.load(f)
+        return fmt, data
+
+    if fmt == "yaml":
+        text = path.read_text(encoding="utf-8")
+        if RuamelYAML is not None:
+            # ruamel.yaml preserves comments; we'll reuse them in template gen
+            y = RuamelYAML()
+            y.preserve_quotes = True
+            data = y.load(text) or {}
+        else:
+            # Fallback: PyYAML (drops comments in parsed structure, but we still
+            # have the original text for comment-preserving template generation).
+            data = yaml.safe_load(text) or {}
+        return fmt, data
+
+    if fmt == "json":
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
         return fmt, data
 
     if fmt == "ini":
@@ -109,12 +120,17 @@ def flatten_config(fmt: str, parsed: Any) -> list[tuple[tuple[str, ...], Any]]:
     """
     items: list[tuple[tuple[str, ...], Any]] = []
 
-    if fmt == "toml":
+    if fmt in {"toml", "yaml", "json"}:
 
         def _walk(obj: Any, path: tuple[str, ...] = ()) -> None:
             if isinstance(obj, dict):
                 for k, v in obj.items():
                     _walk(v, path + (str(k),))
+            elif isinstance(obj, list) and fmt in {"yaml", "json"}:
+                # for YAML/JSON, flatten lists so each element can be templated;
+                # TOML still treats list as a single scalar (ports = [..]) which is fine.
+                for i, v in enumerate(obj):
+                    _walk(v, path + (str(i),))
             else:
                 items.append((path, obj))
 
@@ -182,6 +198,22 @@ def _split_inline_comment(text: str, comment_chars: set[str]) -> tuple[str, str]
         elif ch in comment_chars and not in_single and not in_double:
             return text[:i], text[i:]
     return text, ""
+
+
+def _normalize_default_value(value: Any) -> Any:
+    """
+    Ensure that 'true' / 'false' end up as quoted strings in YAML, not booleans.
+
+    - bool -> QuotedString("true"/"false")
+    - "true"/"false" (any case) -> QuotedString(original_text)
+    - everything else -> unchanged
+    """
+    if isinstance(value, bool):
+        # YAML booleans are lower-case; we keep them as strings.
+        return QuotedString("true" if value else "false")
+    if isinstance(value, str) and value.lower() in {"true", "false"}:
+        return QuotedString(value)
+    return value
 
 
 def generate_defaults_yaml(
@@ -486,6 +518,171 @@ def _generate_toml_template_from_text(role_prefix: str, text: str) -> str:
     return "".join(out_lines)
 
 
+def _generate_yaml_template_from_text(
+    role_prefix: str,
+    text: str,
+) -> str:
+    """
+    Generate a Jinja2 template for a YAML file, preserving comments and
+    blank lines by patching scalar values in-place.
+
+    This handles common "config-ish" YAML:
+      - top-level and nested mappings
+      - lists of scalars
+      - lists of small mapping objects
+    It does *not* aim to support all YAML edge cases (anchors, tags, etc.).
+    """
+    lines = text.splitlines(keepends=True)
+    out_lines: list[str] = []
+
+    # Simple indentation-based context stack: (indent, path, kind)
+    # kind is "map" or "seq".
+    stack: list[tuple[int, tuple[str, ...], str]] = []
+
+    # Track index per parent path for sequences
+    seq_counters: dict[tuple[str, ...], int] = {}
+
+    def current_path() -> tuple[str, ...]:
+        return stack[-1][1] if stack else ()
+
+    for raw_line in lines:
+        stripped = raw_line.lstrip()
+        indent = len(raw_line) - len(stripped)
+
+        # Blank or pure comment lines unchanged
+        if not stripped or stripped.startswith("#"):
+            out_lines.append(raw_line)
+            continue
+
+        # Adjust stack based on indent
+        while stack and indent < stack[-1][0]:
+            stack.pop()
+
+        # --- Handle mapping key lines: "key:" or "key: value"
+        if ":" in stripped and not stripped.lstrip().startswith("- "):
+            # separate key and rest
+            key_part, rest = stripped.split(":", 1)
+            key = key_part.strip()
+            if not key:
+                out_lines.append(raw_line)
+                continue
+
+            # Is this just "key:" or "key: value"?
+            rest_stripped = rest.lstrip(" \t")
+
+            # Use the same inline-comment splitter to see if there's any real value
+            value_candidate, _ = _split_inline_comment(rest_stripped, {"#"})
+            has_value = bool(value_candidate.strip())
+
+            # Update stack/context: current mapping at this indent
+            # Replace any existing mapping at same indent
+            if stack and stack[-1][0] == indent and stack[-1][2] == "map":
+                stack.pop()
+            path = current_path() + (key,)
+            stack.append((indent, path, "map"))
+
+            if not has_value:
+                # Just "key:" -> collection or nested structure begins on following lines.
+                out_lines.append(raw_line)
+                continue
+
+            # We have an inline scalar value on this same line.
+
+            # Separate value from inline comment
+            value_part, comment_part = _split_inline_comment(rest_stripped, {"#"})
+            raw_value = value_part.strip()
+            var_name = make_var_name(role_prefix, path)
+
+            # Keep quote-style if original was quoted
+            use_quotes = (
+                len(raw_value) >= 2
+                and raw_value[0] == raw_value[-1]
+                and raw_value[0] in {'"', "'"}
+            )
+
+            if use_quotes:
+                q = raw_value[0]
+                replacement = f"{q}{{{{ {var_name} }}}}{q}"
+            else:
+                replacement = f"{{{{ {var_name} }}}}"
+
+            leading = rest[: len(rest) - len(rest.lstrip(" \t"))]
+            new_stripped = f"{key}: {leading}{replacement}{comment_part}"
+            out_lines.append(
+                " " * indent + new_stripped + ("\n" if raw_line.endswith("\n") else "")
+            )
+            continue
+
+        # --- Handle list items: "- value" or "- key: value"
+        if stripped.startswith("- "):
+            # Determine parent path
+            # If top of stack isn't sequence at this indent, push one using current path
+            if not stack or stack[-1][0] != indent or stack[-1][2] != "seq":
+                parent_path = current_path()
+                stack.append((indent, parent_path, "seq"))
+
+            parent_path = stack[-1][1]
+            content = stripped[2:]  # after "- "
+            parent_path = stack[-1][1]
+            content = stripped[2:]  # after "- "
+
+            # Determine index for this parent path
+            index = seq_counters.get(parent_path, 0)
+            seq_counters[parent_path] = index + 1
+
+            path = parent_path + (str(index),)
+
+            value_part, comment_part = _split_inline_comment(content, {"#"})
+            raw_value = value_part.strip()
+            var_name = make_var_name(role_prefix, path)
+
+            # If it's of the form "key: value" inside the list, we could try to
+            # support that, but a simple scalar is the common case:
+            use_quotes = (
+                len(raw_value) >= 2
+                and raw_value[0] == raw_value[-1]
+                and raw_value[0] in {'"', "'"}
+            )
+
+            if use_quotes:
+                q = raw_value[0]
+                replacement = f"{q}{{{{ {var_name} }}}}{q}"
+            else:
+                replacement = f"{{{{ {var_name} }}}}"
+
+            new_stripped = f"- {replacement}{comment_part}"
+            out_lines.append(
+                " " * indent + new_stripped + ("\n" if raw_line.endswith("\n") else "")
+            )
+            continue
+
+        # Anything else (multi-line scalars, weird YAML): leave untouched
+        out_lines.append(raw_line)
+
+    return "".join(out_lines)
+
+
+def _generate_json_template(role_prefix: str, data: Any) -> str:
+    """
+    Generate a JSON Jinja2 template from parsed JSON data.
+
+    All scalar values are replaced with Jinja expressions whose names are
+    derived from the path, similar to TOML/YAML.
+    """
+
+    def _walk(obj: Any, path: tuple[str, ...] = ()) -> Any:
+        if isinstance(obj, dict):
+            return {k: _walk(v, path + (str(k),)) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_walk(v, path + (str(i),)) for i, v in enumerate(obj)]
+        # scalar
+        var_name = make_var_name(role_prefix, path)
+        return f"{{{{ {var_name} }}}}"
+
+    templated = _walk(data)
+    return json.dumps(templated, indent=2, ensure_ascii=False) + "\n"
+
+
 def generate_template(
     fmt: str,
     parsed: Any,
@@ -497,14 +694,19 @@ def generate_template(
 
     If original_text is provided, comments and blank lines are preserved by
     patching values in-place. Otherwise we fall back to reconstructing from
-    the parsed structure (no comments).
+    the parsed structure (no comments). JSON of course does not support
+    comments.
     """
     if original_text is not None:
         if fmt == "toml":
             return _generate_toml_template_from_text(role_prefix, original_text)
         if fmt == "ini":
             return _generate_ini_template_from_text(role_prefix, original_text)
-        raise ValueError(f"Unsupported format: {fmt}")
+        if fmt == "yaml":
+            return _generate_yaml_template_from_text(role_prefix, original_text)
+        # For JSON we ignore original_text and reconstruct from parsed structure below
+        if fmt != "json":
+            raise ValueError(f"Unsupported format: {fmt}")
 
     # Fallback: previous behaviour (no comments preserved)
     if fmt == "toml":
@@ -515,4 +717,14 @@ def generate_template(
         if not isinstance(parsed, configparser.ConfigParser):
             raise TypeError("INI parser result must be a ConfigParser")
         return _generate_ini_template(role_prefix, parsed)
+    if fmt == "yaml":
+        if not isinstance(parsed, (dict, list)):
+            raise TypeError("YAML parser result must be a dict or list")
+        return _generate_yaml_template_from_text(
+            role_prefix, yaml.safe_dump(parsed, sort_keys=False)
+        )
+    if fmt == "json":
+        if not isinstance(parsed, (dict, list)):
+            raise TypeError("JSON parser result must be a dict or list")
+        return _generate_json_template(role_prefix, parsed)
     raise ValueError(f"Unsupported format: {fmt}")

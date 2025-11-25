@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import configparser
 import pytest
+import textwrap
 import yaml
 
 import jinjaturtle.core as core
@@ -170,13 +171,13 @@ def test_parse_config_toml_missing_tomllib(monkeypatch):
 
 def test_parse_config_unsupported_format(tmp_path: Path):
     """
-    Hit the ValueError in parse_config when fmt is neither 'toml' nor 'ini'.
+    Hit the ValueError in parse_config when fmt is not a supported format.
     """
     cfg_path = tmp_path / "config.whatever"
     cfg_path.write_text("", encoding="utf-8")
 
     with pytest.raises(ValueError):
-        parse_config(cfg_path, fmt="yaml")
+        parse_config(cfg_path, fmt="bogus")
 
 
 def test_generate_template_type_and_format_errors():
@@ -184,7 +185,8 @@ def test_generate_template_type_and_format_errors():
     Exercise the error branches in generate_template:
       - toml with non-dict parsed
       - ini with non-ConfigParser parsed
-      - completely unsupported fmt
+      - yaml with wrong parsed type
+      - completely unsupported fmt (with and without original_text)
     """
     # wrong type for TOML
     with pytest.raises(TypeError):
@@ -194,14 +196,18 @@ def test_generate_template_type_and_format_errors():
     with pytest.raises(TypeError):
         generate_template("ini", parsed={"not": "a configparser"}, role_prefix="role")
 
-    # unsupported format
-    with pytest.raises(ValueError):
+    # wrong type for YAML
+    with pytest.raises(TypeError):
         generate_template("yaml", parsed=None, role_prefix="role")
 
-    # unsupported format even when original_text is provided
+    # unsupported format, no original_text
+    with pytest.raises(ValueError):
+        generate_template("bogusfmt", parsed=None, role_prefix="role")
+
+    # unsupported format, with original_text
     with pytest.raises(ValueError):
         generate_template(
-            "yaml",
+            "bogusfmt",
             parsed=None,
             role_prefix="role",
             original_text="foo=bar",
@@ -286,3 +292,84 @@ def test_generate_toml_template_from_text_edge_cases():
     # Ensure the lines without '=' / empty key were handled without exploding.
     assert "[table]" in tmpl
     assert "noequals" in tmpl
+
+
+def test_yaml_roundtrip_with_list_and_comment(tmp_path: Path):
+    yaml_text = """
+    # Top comment
+    foo: "bar"
+
+    blah:
+      - something
+      - else
+    """
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(textwrap.dedent(yaml_text), encoding="utf-8")
+
+    fmt, parsed = parse_config(cfg_path)
+    assert fmt == "yaml"
+
+    flat_items = flatten_config(fmt, parsed)
+    defaults_yaml = generate_defaults_yaml("foobar", flat_items)
+    defaults = yaml.safe_load(defaults_yaml)
+
+    # Defaults: keys are flattened with indices
+    assert defaults["foobar_foo"] == "bar"
+    assert defaults["foobar_blah_0"] == "something"
+    assert defaults["foobar_blah_1"] == "else"
+
+    # Template generation (preserving comments)
+    original_text = cfg_path.read_text(encoding="utf-8")
+    template = generate_template(fmt, parsed, "foobar", original_text=original_text)
+
+    # Comment preserved
+    assert "# Top comment" in template
+
+    # Scalar replacement
+    assert "foo:" in template
+    assert "foobar_foo" in template
+
+    # List items use indexed vars, not "item"
+    assert "foobar_blah_0" in template
+    assert "foobar_blah_1" in template
+    assert "{{ foobar_blah }}" not in template
+    assert "foobar_blah_item" not in template
+
+
+def test_json_roundtrip(tmp_path: Path):
+    json_text = """
+    {
+      "foo": "bar",
+      "nested": {
+        "a": 1,
+        "b": true
+      },
+      "list": [10, 20]
+    }
+    """
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(textwrap.dedent(json_text), encoding="utf-8")
+
+    fmt, parsed = parse_config(cfg_path)
+    assert fmt == "json"
+
+    flat_items = flatten_config(fmt, parsed)
+    defaults_yaml = generate_defaults_yaml("foobar", flat_items)
+    defaults = yaml.safe_load(defaults_yaml)
+
+    # Defaults: nested keys and list indices
+    assert defaults["foobar_foo"] == "bar"
+    assert defaults["foobar_nested_a"] == 1
+    # Bool normalized to string "true"
+    assert defaults["foobar_nested_b"] == "true"
+    assert defaults["foobar_list_0"] == 10
+    assert defaults["foobar_list_1"] == 20
+
+    # Template generation (JSON has no comments, so we just rebuild)
+    template = generate_template(fmt, parsed, "foobar")
+
+    assert '"foo": "{{ foobar_foo }}"' in template
+    assert "foobar_nested_a" in template
+    assert "foobar_nested_b" in template
+    assert "foobar_list_0" in template
+    assert "foobar_list_1" in template
