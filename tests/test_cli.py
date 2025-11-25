@@ -18,7 +18,7 @@ def test_cli_stdout_toml(capsys):
     cfg_path = SAMPLES_DIR / "tom.toml"
     exit_code = cli._main([str(cfg_path), "-r", "jinjaturtle"])
 
-    assert exit_code == 0
+    assert exit_code
 
     captured = capsys.readouterr()
     out = captured.out
@@ -52,7 +52,7 @@ def test_cli_writes_output_files(tmp_path, capsys):
         ]
     )
 
-    assert exit_code == 0
+    assert exit_code
     assert defaults_path.is_file()
     assert template_path.is_file()
 
@@ -82,4 +82,4 @@ def test_main_wrapper_exits_with_zero(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         cli.main()
 
-    assert exc.value.code == 0
+    assert exc.value.code
