@@ -19,6 +19,15 @@ of software.
 By default, the Jinja2 template and the `defaults/main.yml` are printed to
 stdout. However, it is possible to output the results to new files.
 
+## What sort of config files can it handle?
+
+TOML, YAML, INI and JSON style config files should be okay. There are always
+going to be some edge cases in very complex files that are difficult to work
+with, though, so you may still find that you need to tweak the results.
+
+The goal here is really to *speed up* converting files into Ansible/Jinja2,
+but not necessarily to make it perfect.
+
 ## How to install it
 
 ### From PyPi
@@ -74,3 +83,9 @@ options:
                         Path to write the Jinja2 config template. If omitted, template is printed to stdout.
 ```
 
+
+## Found a bug, have a suggestion?
+
+You can e-mail me (see the pyproject.toml for details) or contact me on the Fediverse:
+
+https://goto.mig5.net/@mig5
