@@ -41,7 +41,7 @@ _TurtleDumper.add_representer(QuotedString, _quoted_str_representer)
 
 def detect_format(path: Path, explicit: str | None = None) -> str:
     """
-    Determine config format (toml, yaml, ini-ish) from argument or filename.
+    Determine config format (toml, yaml, json, ini-ish) from argument or filename.
     """
     if explicit:
         return explicit
@@ -61,10 +61,7 @@ def detect_format(path: Path, explicit: str | None = None) -> str:
 
 def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
     """
-    Parse config file into a Python object:
-
-      TOML -> nested dict
-      INI  -> configparser.ConfigParser
+    Parse config file into a Python object
     """
     fmt = detect_format(path, fmt)
 
@@ -183,10 +180,10 @@ def make_var_name(role_prefix: str, path: Iterable[str]) -> str:
 
 def _split_inline_comment(text: str, comment_chars: set[str]) -> tuple[str, str]:
     """
-    Split 'value   # comment' into (value_part, comment_part), where
+    Split 'value # comment' into (value_part, comment_part), where
     comment_part starts at the first unquoted comment character.
 
-    comment_chars is e.g. {'#'} for TOML, {'#', ';'} for INI.
+    comment_chars is e.g. {'#'} for TOML/YAML, {'#', ';'} for INI.
     """
     in_single = False
     in_double = False
