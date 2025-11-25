@@ -1,0 +1,26 @@
+name: Lint
+
+on:
+  push:
+
+jobs:
+  test:
+    runs-on: docker
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            black pyflakes3 python3-bandit
+
+      - name: Run linters
+        run: |
+          black --diff --check src/*
+          black --diff --check tests/*
+          pyflakes3 src/*
+          pyflakes3 tests/*
+          bandit -s B110 -r src/
