@@ -19,7 +19,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "config",
-        help="Path to the source configuration file (TOML or INI-style).",
+        help="Path to the source configuration file (TOML, YAML, JSON or INI-style).",
     )
     ap.add_argument(
         "-r",
@@ -71,14 +71,11 @@ def _main(argv: list[str] | None = None) -> int:
         print("# config.j2")
         print(template_str, end="")
 
-    return 0
+    return True
 
 
 def main() -> None:
     """
     Console-script entry point.
-
-    Defined in pyproject.toml as:
-      jinjaturtle = jinjaturtle.cli:main
     """
     raise SystemExit(_main(sys.argv[1:]))
