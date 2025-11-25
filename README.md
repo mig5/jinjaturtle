@@ -1,0 +1,76 @@
+# JinjaTurtle
+
+JinjaTurtle is a command-line tool to help you generate Jinja2 templates and
+Ansible `defaults/main.yml` files from a native configuration file of a piece
+of software.
+
+## How it works
+
+ * The config file is examined
+ * Parameter key names are generated based on the parameter names in the
+   config file. In keeping with Ansible best practices, you pass a prefix
+   for the key names, which should typically match the name of your Ansible
+   role.
+ * A Jinja2 file is generated from the file with those parameter key names
+   injected as the `{{ variable }}` names.
+ * A `defaults/main.yml` is generated with those key names and the *values*
+   taken from the original config file as the defaults.
+
+By default, the Jinja2 template and the `defaults/main.yml` are printed to
+stdout. However, it is possible to output the results to new files.
+
+## How to install it
+
+### From PyPi
+
+```
+pip install jinjaturtle
+```
+
+### From this git repository
+
+Clone the repo and then run inside the clone:
+
+```
+poetry install
+```
+
+### AppImage
+
+Download the AppImage from the Releases and make it executable, and put it
+on your `$PATH`.
+
+## How to run it
+
+Say you have a `php.ini` file and you are in a directory structure like an
+Ansible role (with subfolders `defaults` and `templates`):
+
+```shell
+jinjaturtle php.ini \
+  --role-name php \
+  --defaults-output defaults/main.yml \
+  --template-output templates/php.ini.j2
+```
+
+## Full usage info
+
+```
+usage: jinjaturtle [-h] -r ROLE_NAME [-f {ini,toml}] [-d DEFAULTS_OUTPUT] [-t TEMPLATE_OUTPUT] config
+
+Convert a config file into an Ansible defaults file and Jinja2 template.
+
+positional arguments:
+  config                Path to the source configuration file (TOML or INI-style).
+
+options:
+  -h, --help            show this help message and exit
+  -r, --role-name ROLE_NAME
+                        Ansible role name, used as variable prefix (e.g. cometbft).
+  -f, --format {ini,toml}
+                        Force config format instead of auto-detecting from filename.
+  -d, --defaults-output DEFAULTS_OUTPUT
+                        Path to write defaults/main.yml. If omitted, defaults YAML is printed to stdout.
+  -t, --template-output TEMPLATE_OUTPUT
+                        Path to write the Jinja2 config template. If omitted, template is printed to stdout.
+```
+
