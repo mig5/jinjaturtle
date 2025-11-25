@@ -54,7 +54,10 @@ def _main(argv: list[str] | None = None) -> int:
     fmt, parsed = parse_config(config_path, args.format)
     flat_items = flatten_config(fmt, parsed)
     defaults_yaml = generate_defaults_yaml(args.role_name, flat_items)
-    template_str = generate_template(fmt, parsed, args.role_name)
+    config_text = config_path.read_text(encoding="utf-8")
+    template_str = generate_template(
+        fmt, parsed, args.role_name, original_text=config_text
+    )
 
     if args.defaults_output:
         Path(args.defaults_output).write_text(defaults_yaml, encoding="utf-8")

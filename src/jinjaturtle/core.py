@@ -15,6 +15,41 @@ except ModuleNotFoundError:  # pragma: no cover
         tomllib = None  # type: ignore
 
 
+class QuotedString(str):
+    """Marker type for strings that must be double-quoted in YAML output."""
+
+    pass
+
+
+class _TurtleDumper(yaml.SafeDumper):
+    """Custom YAML dumper that always double-quotes QuotedString values."""
+
+    pass
+
+
+def _quoted_str_representer(dumper: yaml.SafeDumper, data: QuotedString):
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style='"')
+
+
+_TurtleDumper.add_representer(QuotedString, _quoted_str_representer)
+
+
+def _normalize_default_value(value: Any) -> Any:
+    """
+    Ensure that 'true' / 'false' end up as quoted strings in YAML, not booleans.
+
+    - bool -> QuotedString("true"/"false")
+    - "true"/"false" (any case) -> QuotedString(original_text)
+    - everything else -> unchanged
+    """
+    if isinstance(value, bool):
+        # YAML booleans are lower-case; we keep them as strings.
+        return QuotedString("true" if value else "false")
+    if isinstance(value, str) and value.lower() in {"true", "false"}:
+        return QuotedString(value)
+    return value
+
+
 def detect_format(path: Path, explicit: str | None = None) -> str:
     """
     Determine config format (toml vs ini-ish) from argument or filename.
@@ -130,22 +165,49 @@ def make_var_name(role_prefix: str, path: Iterable[str]) -> str:
     return role_prefix
 
 
+def _split_inline_comment(text: str, comment_chars: set[str]) -> tuple[str, str]:
+    """
+    Split 'value   # comment' into (value_part, comment_part), where
+    comment_part starts at the first unquoted comment character.
+
+    comment_chars is e.g. {'#'} for TOML, {'#', ';'} for INI.
+    """
+    in_single = False
+    in_double = False
+    for i, ch in enumerate(text):
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch in comment_chars and not in_single and not in_double:
+            return text[:i], text[i:]
+    return text, ""
+
+
 def generate_defaults_yaml(
-    role_prefix: str, flat_items: list[tuple[tuple[str, ...], Any]]
+    role_prefix: str,
+    flat_items: list[tuple[tuple[str, ...], Any]],
 ) -> str:
     """
     Create YAML for defaults/main.yml from flattened items.
+
+    Boolean/boolean-like values ("true"/"false") are forced to be *strings*
+    and double-quoted in the resulting YAML so that Ansible does not coerce
+    them back into Python booleans.
     """
     defaults: dict[str, Any] = {}
     for path, value in flat_items:
         var_name = make_var_name(role_prefix, path)
-        defaults[var_name] = value
+        defaults[var_name] = _normalize_default_value(value)
 
-    return yaml.safe_dump(
+    return yaml.dump(
         defaults,
+        Dumper=_TurtleDumper,
         sort_keys=True,
         default_flow_style=False,
         allow_unicode=True,
+        explicit_start=True,
+        indent=2,
     )
 
 
@@ -223,10 +285,228 @@ def _generate_ini_template(role_prefix: str, parser: configparser.ConfigParser) 
     return "\n".join(lines).rstrip() + "\n"
 
 
-def generate_template(fmt: str, parsed: Any, role_prefix: str) -> str:
+def _generate_ini_template_from_text(role_prefix: str, text: str) -> str:
     """
-    Dispatch to the appropriate template generator.
+    Generate a Jinja2 template for an INI/php.ini-style file, preserving
+    comments, blank lines, and section headers by patching values in-place.
     """
+    lines = text.splitlines(keepends=True)
+    current_section: str | None = None
+    out_lines: list[str] = []
+
+    for raw_line in lines:
+        line = raw_line
+        stripped = line.lstrip()
+
+        # Blank or pure comment: keep as-is
+        if not stripped or stripped[0] in {"#", ";"}:
+            out_lines.append(raw_line)
+            continue
+
+        # Section header
+        if stripped.startswith("[") and "]" in stripped:
+            header_inner = stripped[1 : stripped.index("]")]
+            current_section = header_inner.strip()
+            out_lines.append(raw_line)
+            continue
+
+        # Work without newline so we can re-attach it exactly
+        newline = ""
+        content = raw_line
+        if content.endswith("\r\n"):
+            newline = "\r\n"
+            content = content[:-2]
+        elif content.endswith("\n"):
+            newline = content[-1]
+            content = content[:-1]
+
+        eq_index = content.find("=")
+        if eq_index == -1:
+            # Not a simple key=value line: leave untouched
+            out_lines.append(raw_line)
+            continue
+
+        before_eq = content[:eq_index]
+        after_eq = content[eq_index + 1 :]
+
+        key = before_eq.strip()
+        if not key:
+            out_lines.append(raw_line)
+            continue
+
+        # Whitespace after '='
+        value_ws_len = len(after_eq) - len(after_eq.lstrip(" \t"))
+        leading_ws = after_eq[:value_ws_len]
+        value_and_comment = after_eq[value_ws_len:]
+
+        value_part, comment_part = _split_inline_comment(value_and_comment, {"#", ";"})
+        raw_value = value_part.strip()
+
+        path = (key,) if current_section is None else (current_section, key)
+        var_name = make_var_name(role_prefix, path)
+
+        # Was the original value quoted?
+        use_quotes = (
+            len(raw_value) >= 2
+            and raw_value[0] == raw_value[-1]
+            and raw_value[0] in {'"', "'"}
+        )
+
+        if use_quotes:
+            quote_char = raw_value[0]
+            replacement_value = f"{quote_char}{{{{ {var_name} }}}}{quote_char}"
+        else:
+            replacement_value = f"{{{{ {var_name} }}}}"
+
+        new_content = before_eq + "=" + leading_ws + replacement_value + comment_part
+        out_lines.append(new_content + newline)
+
+    return "".join(out_lines)
+
+
+def _generate_toml_template_from_text(role_prefix: str, text: str) -> str:
+    """
+    Generate a Jinja2 template for a TOML file, preserving comments,
+    blank lines, and table headers by patching values in-place.
+
+    Handles inline tables like:
+      temp_targets = { cpu = 79.5, case = 72.0 }
+
+    by mapping them to:
+      temp_targets = { cpu = {{ prefix_database_temp_targets_cpu }},
+                       case = {{ prefix_database_temp_targets_case }} }
+    """
+    lines = text.splitlines(keepends=True)
+    current_table: tuple[str, ...] = ()
+    out_lines: list[str] = []
+
+    for raw_line in lines:
+        line = raw_line
+        stripped = line.lstrip()
+
+        # Blank or pure comment
+        if not stripped or stripped.startswith("#"):
+            out_lines.append(raw_line)
+            continue
+
+        # Table header: [server] or [server.tls] or [[array.of.tables]]
+        if stripped.startswith("[") and "]" in stripped:
+            header = stripped
+            first_bracket = header.find("[")
+            closing_bracket = header.find("]", first_bracket + 1)
+            if first_bracket != -1 and closing_bracket != -1:
+                inner = header[first_bracket + 1 : closing_bracket].strip()
+                inner = inner.strip("[]")  # handle [[table]] as well
+                parts = [p.strip() for p in inner.split(".") if p.strip()]
+                current_table = tuple(parts)
+            out_lines.append(raw_line)
+            continue
+
+        # Try key = value
+        newline = ""
+        content = raw_line
+        if content.endswith("\r\n"):
+            newline = "\r\n"
+            content = content[:-2]
+        elif content.endswith("\n"):
+            newline = content[-1]
+            content = content[:-1]
+
+        eq_index = content.find("=")
+        if eq_index == -1:
+            out_lines.append(raw_line)
+            continue
+
+        before_eq = content[:eq_index]
+        after_eq = content[eq_index + 1 :]
+
+        key = before_eq.strip()
+        if not key:
+            out_lines.append(raw_line)
+            continue
+
+        # Whitespace after '='
+        value_ws_len = len(after_eq) - len(after_eq.lstrip(" \t"))
+        leading_ws = after_eq[:value_ws_len]
+        value_and_comment = after_eq[value_ws_len:]
+
+        value_part, comment_part = _split_inline_comment(value_and_comment, {"#"})
+        raw_value = value_part.strip()
+
+        # Path for this key (table + key)
+        path = current_table + (key,)
+
+        # Special case: inline table
+        if (
+            raw_value.startswith("{")
+            and raw_value.endswith("}")
+            and tomllib is not None
+        ):
+            try:
+                # Parse the inline table as a tiny TOML document
+                mini_source = "table = " + raw_value + "\n"
+                mini_data = tomllib.loads(mini_source)["table"]
+            except Exception:
+                mini_data = None
+
+            if isinstance(mini_data, dict):
+                inner_bits: list[str] = []
+                for sub_key, sub_val in mini_data.items():
+                    nested_path = path + (sub_key,)
+                    nested_var = make_var_name(role_prefix, nested_path)
+                    if isinstance(sub_val, str):
+                        inner_bits.append(f'{sub_key} = "{{{{ {nested_var} }}}}"')
+                    else:
+                        inner_bits.append(f"{sub_key} = {{{{ {nested_var} }}}}")
+                replacement_value = "{ " + ", ".join(inner_bits) + " }"
+                new_content = (
+                    before_eq + "=" + leading_ws + replacement_value + comment_part
+                )
+                out_lines.append(new_content + newline)
+                continue
+            # If parsing fails, fall through to normal handling
+
+        # Normal scalar value handling (including bools, numbers, strings)
+        var_name = make_var_name(role_prefix, path)
+        use_quotes = (
+            len(raw_value) >= 2
+            and raw_value[0] == raw_value[-1]
+            and raw_value[0] in {'"', "'"}
+        )
+
+        if use_quotes:
+            quote_char = raw_value[0]
+            replacement_value = f"{quote_char}{{{{ {var_name} }}}}{quote_char}"
+        else:
+            replacement_value = f"{{{{ {var_name} }}}}"
+
+        new_content = before_eq + "=" + leading_ws + replacement_value + comment_part
+        out_lines.append(new_content + newline)
+
+    return "".join(out_lines)
+
+
+def generate_template(
+    fmt: str,
+    parsed: Any,
+    role_prefix: str,
+    original_text: str | None = None,
+) -> str:
+    """
+    Generate a Jinja2 template for the config.
+
+    If original_text is provided, comments and blank lines are preserved by
+    patching values in-place. Otherwise we fall back to reconstructing from
+    the parsed structure (no comments).
+    """
+    if original_text is not None:
+        if fmt == "toml":
+            return _generate_toml_template_from_text(role_prefix, original_text)
+        if fmt == "ini":
+            return _generate_ini_template_from_text(role_prefix, original_text)
+        raise ValueError(f"Unsupported format: {fmt}")
+
+    # Fallback: previous behaviour (no comments preserved)
     if fmt == "toml":
         if not isinstance(parsed, dict):
             raise TypeError("TOML parser result must be a dict")
