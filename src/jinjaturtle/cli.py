@@ -30,7 +30,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "-f",
         "--format",
-        choices=["ini", "toml"],
+        choices=["ini", "json", "toml", "yaml"],
         help="Force config format instead of auto-detecting from filename.",
     )
     ap.add_argument(
