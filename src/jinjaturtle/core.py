@@ -26,6 +26,14 @@ class QuotedString(str):
     pass
 
 
+def _fallback_str_representer(dumper: yaml.SafeDumper, data: Any):
+    """
+    Fallback for objects the dumper doesn't know about (e.g. ruamel.yaml
+    scalar types). Represent them as plain strings.
+    """
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(data))
+
+
 class _TurtleDumper(yaml.SafeDumper):
     """Custom YAML dumper that always double-quotes QuotedString values."""
 
@@ -37,6 +45,8 @@ def _quoted_str_representer(dumper: yaml.SafeDumper, data: QuotedString):
 
 
 _TurtleDumper.add_representer(QuotedString, _quoted_str_representer)
+# Use our fallback for any unknown object types
+_TurtleDumper.add_representer(None, _fallback_str_representer)
 
 
 def detect_format(path: Path, explicit: str | None = None) -> str:
