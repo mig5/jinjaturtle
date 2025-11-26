@@ -200,6 +200,10 @@ def test_generate_template_type_and_format_errors():
     with pytest.raises(TypeError):
         generate_template("yaml", parsed=None, role_prefix="role")
 
+    # wrong type for JSON
+    with pytest.raises(TypeError):
+        generate_template("json", parsed=None, role_prefix="role")
+
     # unsupported format, no original_text
     with pytest.raises(ValueError):
         generate_template("bogusfmt", parsed=None, role_prefix="role")
@@ -295,18 +299,11 @@ def test_generate_toml_template_from_text_edge_cases():
 
 
 def test_yaml_roundtrip_with_list_and_comment(tmp_path: Path):
-    yaml_text = """
-    # Top comment
-    foo: "bar"
+    yaml_path = SAMPLES_DIR / "bar.yaml"
+    assert yaml_path.is_file(), f"Missing sample YAML file: {yaml_path}"
 
-    blah:
-      - something
-      - else
-    """
-    cfg_path = tmp_path / "config.yaml"
-    cfg_path.write_text(textwrap.dedent(yaml_text), encoding="utf-8")
+    fmt, parsed = parse_config(yaml_path)
 
-    fmt, parsed = parse_config(cfg_path)
     assert fmt == "yaml"
 
     flat_items = flatten_config(fmt, parsed)
@@ -319,7 +316,7 @@ def test_yaml_roundtrip_with_list_and_comment(tmp_path: Path):
     assert defaults["foobar_blah_1"] == "else"
 
     # Template generation (preserving comments)
-    original_text = cfg_path.read_text(encoding="utf-8")
+    original_text = yaml_path.read_text(encoding="utf-8")
     template = generate_template(fmt, parsed, "foobar", original_text=original_text)
 
     # Comment preserved
@@ -337,20 +334,10 @@ def test_yaml_roundtrip_with_list_and_comment(tmp_path: Path):
 
 
 def test_json_roundtrip(tmp_path: Path):
-    json_text = """
-    {
-      "foo": "bar",
-      "nested": {
-        "a": 1,
-        "b": true
-      },
-      "list": [10, 20]
-    }
-    """
-    cfg_path = tmp_path / "config.json"
-    cfg_path.write_text(textwrap.dedent(json_text), encoding="utf-8")
+    json_path = SAMPLES_DIR / "foo.json"
+    assert json_path.is_file(), f"Missing sample JSON file: {json_path}"
 
-    fmt, parsed = parse_config(cfg_path)
+    fmt, parsed = parse_config(json_path)
     assert fmt == "json"
 
     flat_items = flatten_config(fmt, parsed)
@@ -373,3 +360,85 @@ def test_json_roundtrip(tmp_path: Path):
     assert "foobar_nested_b" in template
     assert "foobar_list_0" in template
     assert "foobar_list_1" in template
+
+
+def test_generate_yaml_template_from_text_edge_cases():
+    """
+    Exercise YAML text edge cases:
+      - indentation dedent (stack pop)
+      - empty key before ':'
+      - quoted and unquoted list items
+    """
+    text = textwrap.dedent(
+        """
+        root:
+          child: 1
+        other: 2
+          : 3
+        list:
+          - "quoted"
+          - unquoted
+        """
+    )
+
+    tmpl = core._generate_yaml_template_from_text("role", text)
+
+    # Dedent from "root -> child" back to "other" exercises the stack-pop path.
+    # Just check the expected variable names appear.
+    assert "role_root_child" in tmpl
+    assert "role_other" in tmpl
+
+    # The weird "  : 3" line has no key and should be left untouched.
+    assert "  : 3" in tmpl
+
+    # The list should generate indexed variables for each item.
+    # First item is quoted (use_quotes=True), second is unquoted.
+    assert "role_list_0" in tmpl
+    assert "role_list_1" in tmpl
+
+
+def test_generate_template_yaml_structural_fallback():
+    """
+    When original_text is not provided for YAML, generate_template should use
+    the structural fallback path (yaml.safe_dump + _generate_yaml_template_from_text).
+    """
+    parsed = {"outer": {"inner": "val"}}
+
+    tmpl = generate_template("yaml", parsed=parsed, role_prefix="role")
+
+    # We don't care about exact formatting, just that the expected variable
+    # name shows up, proving we went through the structural path.
+    assert "role_outer_inner" in tmpl
+
+
+def test_generate_template_json_type_error():
+    """
+    Wrong type for JSON in generate_template should raise TypeError.
+    """
+    with pytest.raises(TypeError):
+        generate_template("json", parsed="not a dict", role_prefix="role")
+
+
+def test_fallback_str_representer_for_unknown_type():
+    """
+    Ensure that the _fallback_str_representer is used for objects that
+    PyYAML doesn't know how to represent.
+    """
+
+    class Weird:
+        def __str__(self) -> str:
+            return "weird-value"
+
+    data = {"foo": Weird()}
+
+    # This will exercise _fallback_str_representer, because Weird has no
+    # dedicated representer and _TurtleDumper registers our fallback for None.
+    dumped = yaml.dump(
+        data,
+        Dumper=core._TurtleDumper,
+        sort_keys=False,
+        default_flow_style=False,
+    )
+
+    # It should serialize without error, and the string form should appear.
+    assert "weird-value" in dumped
