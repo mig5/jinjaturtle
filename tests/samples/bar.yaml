@@ -1,0 +1,7 @@
+---
+# Top comment
+foo: "bar"
+
+blah:
+  - something
+  - else
