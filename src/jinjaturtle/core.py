@@ -7,11 +7,6 @@ from typing import Any, Iterable
 import yaml
 
 try:
-    from ruamel.yaml import YAML as RuamelYAML  # for comment-preserving YAML
-except ImportError:  # pragma: no cover
-    RuamelYAML = None
-
-try:
     import tomllib  # Python 3.11+
 except ModuleNotFoundError:  # pragma: no cover
     try:
@@ -28,8 +23,8 @@ class QuotedString(str):
 
 def _fallback_str_representer(dumper: yaml.SafeDumper, data: Any):
     """
-    Fallback for objects the dumper doesn't know about (e.g. ruamel.yaml
-    scalar types). Represent them as plain strings.
+    Fallback for objects the dumper doesn't know about. Represent them as
+    plain strings.
     """
     return dumper.represent_scalar("tag:yaml.org,2002:str", str(data))
 
@@ -86,15 +81,7 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
 
     if fmt == "yaml":
         text = path.read_text(encoding="utf-8")
-        if RuamelYAML is not None:
-            # ruamel.yaml preserves comments; we'll reuse them in template gen
-            y = RuamelYAML()
-            y.preserve_quotes = True
-            data = y.load(text) or {}
-        else:
-            # Fallback: PyYAML (drops comments in parsed structure, but we still
-            # have the original text for comment-preserving template generation).
-            data = yaml.safe_load(text) or {}
+        data = yaml.safe_load(text) or {}
         return fmt, data
 
     if fmt == "json":
