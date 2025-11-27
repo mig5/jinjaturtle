@@ -72,8 +72,8 @@ class IniHandler(BaseHandler):
 
     def _generate_ini_template_from_text(self, role_prefix: str, text: str) -> str:
         """
-        Generate a Jinja2 template for an INI/php.ini-style file, preserving
-        comments, blank lines, and section headers by patching values in-place.
+        Generate a Jinja2 template for an INI-style file, preserving comments,
+        blank lines, and section headers by patching values in-place.
         """
         lines = text.splitlines(keepends=True)
         current_section: str | None = None
