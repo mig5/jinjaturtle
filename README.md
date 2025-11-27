@@ -64,7 +64,7 @@ jinjaturtle php.ini \
 ## Full usage info
 
 ```
-usage: jinjaturtle [-h] -r ROLE_NAME [-f {ini,toml}] [-d DEFAULTS_OUTPUT] [-t TEMPLATE_OUTPUT] config
+usage: jinjaturtle [-h] -r ROLE_NAME [-f {json,ini,toml,yaml}] [-d DEFAULTS_OUTPUT] [-t TEMPLATE_OUTPUT] config
 
 Convert a config file into an Ansible defaults file and Jinja2 template.
 
