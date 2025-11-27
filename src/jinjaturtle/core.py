@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import configparser
 import json
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET # nosec
 import yaml
 
 from collections import Counter, defaultdict
@@ -103,8 +103,9 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
 
     if fmt == "xml":
         text = path.read_text(encoding="utf-8")
-        parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=False))
-        root = ET.fromstring(text, parser=parser)
+        # defusedxml.defuse_stdlib() is called in CLI entrypoint
+        parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=False)) # nosec
+        root = ET.fromstring(text, parser=parser) # nosec
         return fmt, root
 
     raise ValueError(f"Unsupported config format: {fmt}")
@@ -868,8 +869,9 @@ def _generate_xml_template_from_text(role_prefix: str, text: str) -> str:
     prolog, body = _split_xml_prolog(text)
 
     # Parse with comments included so <!-- --> are preserved
-    parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True))
-    root = ET.fromstring(body, parser=parser)
+    # defusedxml.defuse_stdlib() is called in CLI entrypoint
+    parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)) # nosec
+    root = ET.fromstring(body, parser=parser) # nosec
 
     _apply_jinja_to_xml_tree(role_prefix, root)
 

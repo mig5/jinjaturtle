@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from defusedxml import defuse_stdlib
 from pathlib import Path
 
 from .core import (
@@ -47,6 +48,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _main(argv: list[str] | None = None) -> int:
+    defuse_stdlib()
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
 
