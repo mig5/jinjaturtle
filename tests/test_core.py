@@ -566,8 +566,7 @@ def test_generate_template_xml_structural_fallback():
         </root>
         """
     )
-    parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=False))
-    root = ET.fromstring(xml_text, parser=parser)
+    root = ET.fromstring(xml_text)
 
     tmpl = generate_template("xml", parsed=root, role_prefix="role")
 
@@ -643,8 +642,7 @@ def test_flatten_xml_text_with_attributes_uses_value_suffix():
     the text at path + ('value',), not just path.
     """
     xml_text = "<root><node attr='x'>text</node></root>"
-    parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=False))
-    root = ET.fromstring(xml_text, parser=parser)
+    root = ET.fromstring(xml_text)
 
     items = flatten_config("xml", root)
 
