@@ -1,5 +1,9 @@
 # JinjaTurtle
 
+<div align="center">
+  <img src="https://git.mig5.net/mig5/jinjaturtle/raw/branch/main/jinjaturtle.svg" alt="JinjaTurtle logo" width="240" />
+</div>
+
 JinjaTurtle is a command-line tool to help you generate Jinja2 templates and
 Ansible `defaults/main.yml` files from a native configuration file of a piece
 of software.
