@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import configparser
 import json
-import xml.etree.ElementTree as ET
 import yaml
 
 from collections import Counter, defaultdict
+from defusedxml import ElementTree as ET
 from pathlib import Path
 from typing import Any, Iterable
 

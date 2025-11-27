@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from defusedxml import ElementTree as ET
 from pathlib import Path
 import configparser
 import pytest
 import textwrap
 import yaml
-import xml.etree.ElementTree as ET
 
 import jinjaturtle.core as core
 from jinjaturtle.core import (
