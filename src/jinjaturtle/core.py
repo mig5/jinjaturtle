@@ -103,7 +103,7 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
 
     if fmt == "xml":
         text = path.read_text(encoding="utf-8")
-        root = ET.fromstring(text) # nosec B314
+        root = ET.fromstring(text)  # nosec B314
         return fmt, root
 
     raise ValueError(f"Unsupported config format: {fmt}")
