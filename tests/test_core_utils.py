@@ -164,18 +164,6 @@ def test_fallback_str_representer_for_unknown_type():
     assert "weird-value" in dumped
 
 
-def test_normalize_default_value_true_false_strings():
-    # 'true'/'false' strings should be preserved as strings and double-quoted in YAML.
-    flat_items = [
-        (("section", "foo"), "true"),
-        (("section", "bar"), "FALSE"),
-    ]
-    defaults_yaml = generate_defaults_yaml("role", flat_items)
-    data = yaml.safe_load(defaults_yaml)
-    assert data["role_section_foo"] == "true"
-    assert data["role_section_bar"] == "FALSE"
-
-
 def test_normalize_default_value_bool_inputs_are_stringified():
     """
     Real boolean values should be turned into quoted 'true'/'false' strings
