@@ -102,8 +102,6 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
         return fmt, parser
 
     if fmt == "xml":
-        # Parse XML into an ElementTree Element.
-        # We do NOT insert comments here so flattening stays simple.
         text = path.read_text(encoding="utf-8")
         parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=False))
         root = ET.fromstring(text, parser=parser)
@@ -139,7 +137,7 @@ def _flatten_xml(root: ET.Element) -> list[tuple[tuple[str, ...], Any]]:
             attr_path = path + (f"@{attr_name}",)
             items.append((attr_path, attr_val))
 
-        # Children (exclude comments if any got in here)
+        # Children
         children = [c for c in list(elem) if isinstance(c.tag, str)]
 
         # Text content
@@ -822,7 +820,7 @@ def _apply_jinja_to_xml_tree(role_prefix: str, root: ET.Element) -> None:
             var_name = make_var_name(role_prefix, attr_path)
             elem.set(attr_name, f"{{{{ {var_name} }}}}")
 
-        # Children (exclude comments)
+        # Children
         children = [c for c in list(elem) if isinstance(c.tag, str)]
 
         # Text content
@@ -933,8 +931,6 @@ def generate_template(
     if fmt == "xml":
         if not isinstance(parsed, ET.Element):
             raise TypeError("XML parser result must be an Element")
-        # We don't have original_text, so comments are already lost.
-        # Re-serialise and run through the same templating path.
         xml_str = ET.tostring(parsed, encoding="unicode")
         return _generate_xml_template_from_text(role_prefix, xml_str)
     raise ValueError(f"Unsupported format: {fmt}")
