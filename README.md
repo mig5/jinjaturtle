@@ -25,9 +25,13 @@ stdout. However, it is possible to output the results to new files.
 
 ## What sort of config files can it handle?
 
-TOML, YAML, INI and JSON style config files should be okay. There are always
+TOML, YAML, INI, JSON and XML-style config files should be okay. There are always
 going to be some edge cases in very complex files that are difficult to work
 with, though, so you may still find that you need to tweak the results.
+
+The tool does not do anything intelligent like detect common sections that
+could practically be turned into 'for' loops in Jinja. You'd have to do those
+sorts of optimisations yourself.
 
 The goal here is really to *speed up* converting files into Ansible/Jinja2,
 but not necessarily to make it perfect.
@@ -68,7 +72,7 @@ jinjaturtle php.ini \
 ## Full usage info
 
 ```
-usage: jinjaturtle [-h] -r ROLE_NAME [-f {json,ini,toml,yaml}] [-d DEFAULTS_OUTPUT] [-t TEMPLATE_OUTPUT] config
+usage: jinjaturtle [-h] -r ROLE_NAME [-f {json,ini,toml,yaml,xml}] [-d DEFAULTS_OUTPUT] [-t TEMPLATE_OUTPUT] config
 
 Convert a config file into an Ansible defaults file and Jinja2 template.
 

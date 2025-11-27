@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import configparser
 import json
+import xml.etree.ElementTree as ET
+import yaml
+
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
-import yaml
 
 try:
     import tomllib  # Python 3.11+
@@ -46,7 +49,7 @@ _TurtleDumper.add_representer(None, _fallback_str_representer)
 
 def detect_format(path: Path, explicit: str | None = None) -> str:
     """
-    Determine config format (toml, yaml, json, ini-ish) from argument or filename.
+    Determine config format (toml, yaml, json, ini-ish, xml) from argument or filename.
     """
     if explicit:
         return explicit
@@ -60,6 +63,8 @@ def detect_format(path: Path, explicit: str | None = None) -> str:
         return "json"
     if suffix in {".ini", ".cfg", ".conf"} or name.endswith(".ini"):
         return "ini"
+    if suffix == ".xml":
+        return "xml"
     # Fallback: treat as INI-ish
     return "ini"
 
@@ -96,7 +101,74 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
             parser.read_file(f)
         return fmt, parser
 
+    if fmt == "xml":
+        # Parse XML into an ElementTree Element.
+        # We do NOT insert comments here so flattening stays simple.
+        text = path.read_text(encoding="utf-8")
+        parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=False))
+        root = ET.fromstring(text, parser=parser)
+        return fmt, root
+
     raise ValueError(f"Unsupported config format: {fmt}")
+
+
+def _flatten_xml(root: ET.Element) -> list[tuple[tuple[str, ...], Any]]:
+    """
+    Flatten an XML tree into (path, value) pairs.
+
+    Path conventions:
+      - Root element's children are treated as top-level (root tag is *not* included).
+      - Element text:
+          <foo>bar</foo>           -> path ("foo",)          value "bar"
+          <foo attr="x">bar</foo>  -> path ("foo", "value")  value "bar"
+          <foo><bar>baz</bar></foo> -> ("foo", "bar") / etc.
+      - Attributes:
+          <server host="localhost">
+            -> path ("server", "@host") value "localhost"
+      - Repeated sibling elements:
+          <endpoint>/a</endpoint>
+          <endpoint>/b</endpoint>
+            -> ("endpoint", "0") "/a"
+               ("endpoint", "1") "/b"
+    """
+    items: list[tuple[tuple[str, ...], Any]] = []
+
+    def walk(elem: ET.Element, path: tuple[str, ...]) -> None:
+        # Attributes
+        for attr_name, attr_val in elem.attrib.items():
+            attr_path = path + (f"@{attr_name}",)
+            items.append((attr_path, attr_val))
+
+        # Children (exclude comments if any got in here)
+        children = [c for c in list(elem) if isinstance(c.tag, str)]
+
+        # Text content
+        text = (elem.text or "").strip()
+        if text:
+            if not elem.attrib and not children:
+                # Simple <foo>bar</foo>
+                items.append((path, text))
+            else:
+                # Text alongside attrs/children
+                items.append((path + ("value",), text))
+
+        # Repeated siblings get an index; singletons just use the tag
+        counts = Counter(child.tag for child in children)
+        index_counters: dict[str, int] = defaultdict(int)
+
+        for child in children:
+            tag = child.tag
+            if counts[tag] > 1:
+                idx = index_counters[tag]
+                index_counters[tag] += 1
+                child_path = path + (tag, str(idx))
+            else:
+                child_path = path + (tag,)
+            walk(child, child_path)
+
+    # Treat root as a container: its children are top-level
+    walk(root, ())
+    return items
 
 
 def flatten_config(fmt: str, parsed: Any) -> list[tuple[tuple[str, ...], Any]]:
@@ -141,6 +213,12 @@ def flatten_config(fmt: str, parsed: Any) -> list[tuple[tuple[str, ...], Any]]:
                 else:
                     processed = raw
                 items.append(((section, key), processed))
+
+    elif fmt == "xml":
+        if not isinstance(parsed, ET.Element):
+            raise TypeError("XML parser result must be an Element")
+        items = _flatten_xml(parsed)
+
     else:  # pragma: no cover
         raise ValueError(f"Unsupported format: {fmt}")
 
@@ -677,6 +755,135 @@ def _generate_json_template(role_prefix: str, data: Any) -> str:
     return json.dumps(templated, indent=2, ensure_ascii=False) + "\n"
 
 
+def _split_xml_prolog(text: str) -> tuple[str, str]:
+    """
+    Split an XML document into (prolog, body), where prolog includes:
+      - XML declaration (<?xml ...?>)
+      - top-level comments
+      - DOCTYPE
+    The body starts at the root element.
+    """
+    i = 0
+    n = len(text)
+    prolog_parts: list[str] = []
+
+    while i < n:
+        # Preserve leading whitespace
+        while i < n and text[i].isspace():
+            prolog_parts.append(text[i])
+            i += 1
+        if i >= n:
+            break
+
+        if text.startswith("<?", i):
+            end = text.find("?>", i + 2)
+            if end == -1:
+                break
+            prolog_parts.append(text[i : end + 2])
+            i = end + 2
+            continue
+
+        if text.startswith("<!--", i):
+            end = text.find("-->", i + 4)
+            if end == -1:
+                break
+            prolog_parts.append(text[i : end + 3])
+            i = end + 3
+            continue
+
+        if text.startswith("<!DOCTYPE", i):
+            end = text.find(">", i + 9)
+            if end == -1:
+                break
+            prolog_parts.append(text[i : end + 1])
+            i = end + 1
+            continue
+
+        if text[i] == "<":
+            # Assume root element starts here
+            break
+
+        # Unexpected content: stop treating as prolog
+        break
+
+    return "".join(prolog_parts), text[i:]
+
+
+def _apply_jinja_to_xml_tree(role_prefix: str, root: ET.Element) -> None:
+    """
+    Mutate the XML tree in-place, replacing scalar values with Jinja
+    expressions based on the same paths used in _flatten_xml.
+    """
+
+    def walk(elem: ET.Element, path: tuple[str, ...]) -> None:
+        # Attributes
+        for attr_name in list(elem.attrib.keys()):
+            attr_path = path + (f"@{attr_name}",)
+            var_name = make_var_name(role_prefix, attr_path)
+            elem.set(attr_name, f"{{{{ {var_name} }}}}")
+
+        # Children (exclude comments)
+        children = [c for c in list(elem) if isinstance(c.tag, str)]
+
+        # Text content
+        text = (elem.text or "").strip()
+        if text:
+            if not elem.attrib and not children:
+                text_path = path
+            else:
+                text_path = path + ("value",)
+            var_name = make_var_name(role_prefix, text_path)
+            elem.text = f"{{{{ {var_name} }}}}"
+
+        # Repeated children get indexes just like in _flatten_xml
+        counts = Counter(child.tag for child in children)
+        index_counters: dict[str, int] = defaultdict(int)
+
+        for child in children:
+            tag = child.tag
+            if counts[tag] > 1:
+                idx = index_counters[tag]
+                index_counters[tag] += 1
+                child_path = path + (tag, str(idx))
+            else:
+                child_path = path + (tag,)
+            walk(child, child_path)
+
+    walk(root, ())
+
+
+def _generate_xml_template_from_text(role_prefix: str, text: str) -> str:
+    """
+    Generate a Jinja2 template for an XML file, preserving comments and prolog.
+
+    - Attributes become Jinja placeholders:
+        <server host="localhost" />
+          -> <server host="{{ prefix_server_host }}" />
+
+    - Text nodes become placeholders:
+        <port>8080</port>
+          -> <port>{{ prefix_port }}</port>
+
+      but if the element also has attributes/children, the value path
+      gets a trailing "value" component, matching flattening.
+    """
+    prolog, body = _split_xml_prolog(text)
+
+    # Parse with comments included so <!-- --> are preserved
+    parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True))
+    root = ET.fromstring(body, parser=parser)
+
+    _apply_jinja_to_xml_tree(role_prefix, root)
+
+    # Pretty indentation if available (Python 3.9+)
+    indent = getattr(ET, "indent", None)
+    if indent is not None:
+        indent(root, space="  ")  # type: ignore[arg-type]
+
+    xml_body = ET.tostring(root, encoding="unicode")
+    return prolog + xml_body
+
+
 def generate_template(
     fmt: str,
     parsed: Any,
@@ -698,11 +905,13 @@ def generate_template(
             return _generate_ini_template_from_text(role_prefix, original_text)
         if fmt == "yaml":
             return _generate_yaml_template_from_text(role_prefix, original_text)
+        if fmt == "xml":
+            return _generate_xml_template_from_text(role_prefix, original_text)
         # For JSON we ignore original_text and reconstruct from parsed structure below
         if fmt != "json":
             raise ValueError(f"Unsupported format: {fmt}")
 
-    # Fallback: previous behaviour (no comments preserved)
+    # Fallback: no comments preserved
     if fmt == "toml":
         if not isinstance(parsed, dict):
             raise TypeError("TOML parser result must be a dict")
@@ -721,4 +930,11 @@ def generate_template(
         if not isinstance(parsed, (dict, list)):
             raise TypeError("JSON parser result must be a dict or list")
         return _generate_json_template(role_prefix, parsed)
+    if fmt == "xml":
+        if not isinstance(parsed, ET.Element):
+            raise TypeError("XML parser result must be an Element")
+        # We don't have original_text, so comments are already lost.
+        # Re-serialise and run through the same templating path.
+        xml_str = ET.tostring(parsed, encoding="unicode")
+        return _generate_xml_template_from_text(role_prefix, xml_str)
     raise ValueError(f"Unsupported format: {fmt}")
