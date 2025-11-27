@@ -9,8 +9,6 @@
            stroke-width="4"/>
 
   <!-- Center braces block (in the middle of the shell) -->
-  <rect x="42" y="62" width="28" height="12" rx="3"
-        fill="#111827" opacity="0.1"/>
   <text x="56" y="71"
         text-anchor="middle"
         font-family="monospace"
