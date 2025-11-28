@@ -29,9 +29,12 @@ TOML, YAML, INI, JSON and XML-style config files should be okay. There are alway
 going to be some edge cases in very complex files that are difficult to work
 with, though, so you may still find that you need to tweak the results.
 
-The tool does not do anything intelligent like detect common sections that
-could practically be turned into 'for' loops in Jinja. You'd have to do those
-sorts of optimisations yourself.
+For XML and YAML files, JinjaTurtle will attempt to generate 'for' loops
+and lists in the Ansible yaml if the config file looks homogenous enough to
+support it. However, if it lacks the confidence in this, it will fall back to
+using scalar-style flattened attributes.
+
+You may need or wish to tidy up the config to suit your needs.
 
 The goal here is really to *speed up* converting files into Ansible/Jinja2,
 but not necessarily to make it perfect.
