@@ -325,7 +325,6 @@ class LoopAnalyzer:
 
     def _walk_xml_element(self, elem: Any, path: tuple[str, ...]) -> None:
         """Recursively walk XML elements looking for repeated siblings."""
-        import xml.etree.ElementTree as ET
 
         children = [c for c in list(elem) if isinstance(c.tag, str)]
 

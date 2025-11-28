@@ -1,5 +1,7 @@
 # JinjaTurtle
 
+## ARCHIVED: I'm no longer working on this project, it didn't work as well as I'd hoped. ##
+
 <div align="center">
   <img src="https://git.mig5.net/mig5/jinjaturtle/raw/branch/main/jinjaturtle.svg" alt="JinjaTurtle logo" width="240" />
 </div>

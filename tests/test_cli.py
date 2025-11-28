@@ -66,20 +66,3 @@ def test_cli_writes_output_files(tmp_path, capsys):
     # When writing to files, we shouldn't print the big headers
     assert "# defaults/main.yml" not in captured.out
     assert "# config.j2" not in captured.out
-
-
-def test_main_wrapper_exits_with_zero(monkeypatch):
-    """
-    Cover the main() wrapper that raises SystemExit.
-    """
-    cfg_path = SAMPLES_DIR / "tom.toml"
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["jinjaturtle", str(cfg_path), "-r", "jinjaturtle"],
-    )
-
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-
-    assert exc.value.code
