@@ -23,7 +23,7 @@ class JsonHandler(DictLikeHandler):
     ) -> str:
         if not isinstance(parsed, (dict, list)):
             raise TypeError("JSON parser result must be a dict or list")
-        # Rebuild structurally
+        # As before: ignore original_text and rebuild structurally
         return self._generate_json_template(role_prefix, parsed)
 
     def _generate_json_template(self, role_prefix: str, data: Any) -> str:

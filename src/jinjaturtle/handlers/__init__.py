@@ -7,6 +7,8 @@ from .json import JsonHandler
 from .toml import TomlHandler
 from .yaml import YamlHandler
 from .xml import XmlHandler
+from .xml_loopable import XmlHandlerLoopable
+from .yaml_loopable import YamlHandlerLoopable
 
 __all__ = [
     "BaseHandler",
@@ -16,4 +18,6 @@ __all__ = [
     "TomlHandler",
     "YamlHandler",
     "XmlHandler",
+    "XmlHandlerLoopable",
+    "YamlHandlerLoopable",
 ]

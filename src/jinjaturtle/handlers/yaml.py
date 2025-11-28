@@ -9,7 +9,7 @@ from . import DictLikeHandler
 
 class YamlHandler(DictLikeHandler):
     fmt = "yaml"
-    flatten_lists = True
+    flatten_lists = True  # you flatten YAML lists
 
     def parse(self, path: Path) -> Any:
         text = path.read_text(encoding="utf-8")
@@ -96,6 +96,8 @@ class YamlHandler(DictLikeHandler):
                     # Just "key:" -> collection or nested structure begins on following lines.
                     out_lines.append(raw_line)
                     continue
+
+                # We have an inline scalar value on this same line.
 
                 # Separate value from inline comment
                 value_part, comment_part = self._split_inline_comment(

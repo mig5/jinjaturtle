@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .core import (
     parse_config,
+    analyze_loops,
     flatten_config,
     generate_defaults_yaml,
     generate_template,
@@ -53,12 +54,27 @@ def _main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     config_path = Path(args.config)
-    fmt, parsed = parse_config(config_path, args.format)
-    flat_items = flatten_config(fmt, parsed)
-    defaults_yaml = generate_defaults_yaml(args.role_name, flat_items)
     config_text = config_path.read_text(encoding="utf-8")
+
+    # Parse the config
+    fmt, parsed = parse_config(config_path, args.format)
+
+    # Analyze for loops
+    loop_candidates = analyze_loops(fmt, parsed)
+
+    # Flatten config (excluding loop paths if loops are detected)
+    flat_items = flatten_config(fmt, parsed, loop_candidates)
+
+    # Generate defaults YAML (with loop collections if detected)
+    defaults_yaml = generate_defaults_yaml(args.role_name, flat_items, loop_candidates)
+
+    # Generate template (with loops if detected)
     template_str = generate_template(
-        fmt, parsed, args.role_name, original_text=config_text
+        fmt,
+        parsed,
+        args.role_name,
+        original_text=config_text,
+        loop_candidates=loop_candidates,
     )
 
     if args.defaults_output:
