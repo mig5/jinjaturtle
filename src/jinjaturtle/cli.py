@@ -96,4 +96,4 @@ def main() -> None:
     """
     Console-script entry point.
     """
-    raise SystemExit(_main(sys.argv[1:]))
+    _main(sys.argv[1:])
