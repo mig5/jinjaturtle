@@ -15,7 +15,7 @@ class JsonHandler(DictLikeHandler):
         with path.open("r", encoding="utf-8") as f:
             return json.load(f)
 
-    def generate_template(
+    def generate_jinja2_template(
         self,
         parsed: Any,
         role_prefix: str,

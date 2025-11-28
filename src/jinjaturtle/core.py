@@ -13,8 +13,6 @@ from .handlers import (
     TomlHandler,
     YamlHandler,
     XmlHandler,
-    YamlHandlerLoopable,
-    XmlHandlerLoopable,
 )
 
 
@@ -56,8 +54,6 @@ _JSON_HANDLER = JsonHandler()
 _TOML_HANDLER = TomlHandler()
 _YAML_HANDLER = YamlHandler()
 _XML_HANDLER = XmlHandler()
-_YAML_HANDLER_LOOPABLE = YamlHandlerLoopable()
-_XML_HANDLER_LOOPABLE = XmlHandlerLoopable()
 
 _HANDLERS["ini"] = _INI_HANDLER
 _HANDLERS["json"] = _JSON_HANDLER
@@ -173,7 +169,7 @@ def _normalize_default_value(value: Any) -> Any:
     return value
 
 
-def generate_defaults_yaml(
+def generate_ansible_yaml(
     role_prefix: str,
     flat_items: list[tuple[tuple[str, ...], Any]],
     loop_candidates: list[LoopCandidate] | None = None,
@@ -205,7 +201,7 @@ def generate_defaults_yaml(
     )
 
 
-def generate_template(
+def generate_jinja2_template(
     fmt: str,
     parsed: Any,
     role_prefix: str,
@@ -215,24 +211,18 @@ def generate_template(
     """
     Generate a Jinja2 template for the config.
     """
-    # Use enhanced handler if we have loop candidates
     handler = _HANDLERS.get(fmt)
-
-    if loop_candidates and fmt in ("yaml", "xml"):
-        # Use enhanced handlers for YAML and XML when we have loops
-        if fmt == "yaml":
-            handler = _YAML_HANDLER_LOOPABLE
-        elif fmt == "xml":
-            handler = _XML_HANDLER_LOOPABLE
 
     if handler is None:
         raise ValueError(f"Unsupported format: {fmt}")
 
     # Check if handler supports loop-aware generation
-    if hasattr(handler, "generate_template_with_loops") and loop_candidates:
-        return handler.generate_template_with_loops(
+    if hasattr(handler, "generate_jinja2_template_with_loops") and loop_candidates:
+        return handler.generate_jinja2_template_with_loops(
             parsed, role_prefix, original_text, loop_candidates
         )
 
     # Fallback to original scalar-only generation
-    return handler.generate_template(parsed, role_prefix, original_text=original_text)
+    return handler.generate_jinja2_template(
+        parsed, role_prefix, original_text=original_text
+    )

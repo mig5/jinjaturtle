@@ -19,7 +19,7 @@ class TomlHandler(DictLikeHandler):
         with path.open("rb") as f:
             return tomllib.load(f)
 
-    def generate_template(
+    def generate_jinja2_template(
         self,
         parsed: Any,
         role_prefix: str,

@@ -8,8 +8,8 @@ import yaml
 from jinjaturtle.core import (
     parse_config,
     flatten_config,
-    generate_defaults_yaml,
-    generate_template,
+    generate_ansible_yaml,
+    generate_jinja2_template,
 )
 from jinjaturtle.handlers.ini import IniHandler
 
@@ -26,8 +26,8 @@ def test_ini_php_sample_roundtrip():
     flat_items = flatten_config(fmt, parsed)
     assert flat_items, "Expected at least one flattened item from php.ini sample"
 
-    defaults_yaml = generate_defaults_yaml("php", flat_items)
-    defaults = yaml.safe_load(defaults_yaml)
+    ansible_yaml = generate_ansible_yaml("php", flat_items)
+    defaults = yaml.safe_load(ansible_yaml)
 
     # defaults should be a non-empty dict
     assert isinstance(defaults, dict)
@@ -41,7 +41,7 @@ def test_ini_php_sample_roundtrip():
 
     # template generation
     original_text = ini_path.read_text(encoding="utf-8")
-    template = generate_template(fmt, parsed, "php", original_text=original_text)
+    template = generate_jinja2_template(fmt, parsed, "php", original_text=original_text)
     assert "; About this file" in template
     assert isinstance(template, str)
     assert template.strip(), "Template for php.ini sample should not be empty"
@@ -53,16 +53,16 @@ def test_ini_php_sample_roundtrip():
         ), f"Variable {var_name} not referenced in INI template"
 
 
-def test_generate_template_fallback_ini():
+def test_generate_jinja2_template_fallback_ini():
     """
-    When original_text is not provided, generate_template should use the
+    When original_text is not provided, generate_jinja2_template should use the
     structural fallback path for INI configs.
     """
     parser = configparser.ConfigParser()
     # foo is quoted in the INI text to hit the "preserve quotes" branch
     parser["section"] = {"foo": '"bar"', "num": "42"}
 
-    tmpl_ini = generate_template("ini", parsed=parser, role_prefix="role")
+    tmpl_ini = generate_jinja2_template("ini", parsed=parser, role_prefix="role")
     assert "[section]" in tmpl_ini
     assert "role_section_foo" in tmpl_ini
     assert '"{{ role_section_foo }}"' in tmpl_ini  # came from quoted INI value

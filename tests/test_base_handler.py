@@ -31,4 +31,4 @@ def test_base_handler_abstract_methods_raise_not_implemented(tmp_path: Path):
         handler.flatten(object())
 
     with pytest.raises(NotImplementedError):
-        handler.generate_template(parsed=object(), role_prefix="role")
+        handler.generate_jinja2_template(parsed=object(), role_prefix="role")

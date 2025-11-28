@@ -10,8 +10,8 @@ import yaml
 from jinjaturtle.core import (
     parse_config,
     flatten_config,
-    generate_defaults_yaml,
-    generate_template,
+    generate_ansible_yaml,
+    generate_jinja2_template,
 )
 from jinjaturtle.handlers.xml import XmlHandler
 
@@ -28,8 +28,8 @@ def test_xml_roundtrip_ossec_web_rules():
     flat_items = flatten_config(fmt, parsed)
     assert flat_items, "Expected at least one flattened item from XML sample"
 
-    defaults_yaml = generate_defaults_yaml("ossec", flat_items)
-    defaults = yaml.safe_load(defaults_yaml)
+    ansible_yaml = generate_ansible_yaml("ossec", flat_items)
+    defaults = yaml.safe_load(ansible_yaml)
 
     # defaults should be a non-empty dict
     assert isinstance(defaults, dict)
@@ -55,7 +55,9 @@ def test_xml_roundtrip_ossec_web_rules():
 
     # Template generation (preserving comments)
     original_text = xml_path.read_text(encoding="utf-8")
-    template = generate_template(fmt, parsed, "ossec", original_text=original_text)
+    template = generate_jinja2_template(
+        fmt, parsed, "ossec", original_text=original_text
+    )
     assert isinstance(template, str)
     assert template.strip(), "Template for XML sample should not be empty"
 
@@ -108,13 +110,13 @@ def test_generate_xml_template_from_text_edge_cases():
     assert "role_child_1" in tmpl
 
 
-def test_generate_template_xml_type_error():
+def test_generate_jinja2_template_xml_type_error():
     """
-    Wrong type for XML in XmlHandler.generate_template should raise TypeError.
+    Wrong type for XML in XmlHandler.generate_jinja2_template should raise TypeError.
     """
     handler = XmlHandler()
     with pytest.raises(TypeError):
-        handler.generate_template(parsed="not an element", role_prefix="role")
+        handler.generate_jinja2_template(parsed="not an element", role_prefix="role")
 
 
 def test_flatten_config_xml_type_error():
@@ -125,9 +127,9 @@ def test_flatten_config_xml_type_error():
         flatten_config("xml", parsed="not-an-element")
 
 
-def test_generate_template_xml_structural_fallback():
+def test_generate_jinja2_template_xml_structural_fallback():
     """
-    When original_text is not provided for XML, generate_template should use
+    When original_text is not provided for XML, generate_jinja2_template should use
     the structural fallback path (ET.tostring + handler processing).
     """
     xml_text = textwrap.dedent(
@@ -140,7 +142,7 @@ def test_generate_template_xml_structural_fallback():
     )
     root = ET.fromstring(xml_text)
 
-    tmpl = generate_template("xml", parsed=root, role_prefix="role")
+    tmpl = generate_jinja2_template("xml", parsed=root, role_prefix="role")
 
     # Root attribute path ("@attr",) -> role_attr
     assert "role_attr" in tmpl

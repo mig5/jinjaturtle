@@ -8,8 +8,8 @@ import yaml
 from jinjaturtle.core import (
     parse_config,
     flatten_config,
-    generate_defaults_yaml,
-    generate_template,
+    generate_ansible_yaml,
+    generate_jinja2_template,
 )
 from jinjaturtle.handlers.yaml import YamlHandler
 
@@ -24,8 +24,8 @@ def test_yaml_roundtrip_with_list_and_comment():
     assert fmt == "yaml"
 
     flat_items = flatten_config(fmt, parsed)
-    defaults_yaml = generate_defaults_yaml("foobar", flat_items)
-    defaults = yaml.safe_load(defaults_yaml)
+    ansible_yaml = generate_ansible_yaml("foobar", flat_items)
+    defaults = yaml.safe_load(ansible_yaml)
 
     # Defaults: keys are flattened with indices
     assert defaults["foobar_foo"] == "bar"
@@ -34,7 +34,9 @@ def test_yaml_roundtrip_with_list_and_comment():
 
     # Template generation (preserving comments)
     original_text = yaml_path.read_text(encoding="utf-8")
-    template = generate_template(fmt, parsed, "foobar", original_text=original_text)
+    template = generate_jinja2_template(
+        fmt, parsed, "foobar", original_text=original_text
+    )
 
     # Comment preserved
     assert "# Top comment" in template
@@ -86,14 +88,14 @@ def test_generate_yaml_template_from_text_edge_cases():
     assert "role_list_1" in tmpl
 
 
-def test_generate_template_yaml_structural_fallback():
+def test_generate_jinja2_template_yaml_structural_fallback():
     """
-    When original_text is not provided for YAML, generate_template should use
+    When original_text is not provided for YAML, generate_jinja2_template should use
     the structural fallback path (yaml.safe_dump + handler processing).
     """
     parsed = {"outer": {"inner": "val"}}
 
-    tmpl = generate_template("yaml", parsed=parsed, role_prefix="role")
+    tmpl = generate_jinja2_template("yaml", parsed=parsed, role_prefix="role")
 
     # We don't care about exact formatting, just that the expected variable
     # name shows up, proving we went through the structural path.

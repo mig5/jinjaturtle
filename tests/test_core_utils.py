@@ -10,8 +10,8 @@ from jinjaturtle.core import (
     detect_format,
     parse_config,
     flatten_config,
-    generate_defaults_yaml,
-    generate_template,
+    generate_ansible_yaml,
+    generate_jinja2_template,
     make_var_name,
 )
 
@@ -90,9 +90,9 @@ def test_parse_config_unsupported_format(tmp_path: Path):
         parse_config(cfg_path, fmt="bogus")
 
 
-def test_generate_template_type_and_format_errors():
+def test_generate_jinja2_template_type_and_format_errors():
     """
-    Exercise the error branches in generate_template:
+    Exercise the error branches in generate_jinja2_template:
       - toml with non-dict parsed
       - ini with non-ConfigParser parsed
       - yaml with wrong parsed type
@@ -101,27 +101,29 @@ def test_generate_template_type_and_format_errors():
     """
     # wrong type for TOML
     with pytest.raises(TypeError):
-        generate_template("toml", parsed="not a dict", role_prefix="role")
+        generate_jinja2_template("toml", parsed="not a dict", role_prefix="role")
 
     # wrong type for INI
     with pytest.raises(TypeError):
-        generate_template("ini", parsed={"not": "a configparser"}, role_prefix="role")
+        generate_jinja2_template(
+            "ini", parsed={"not": "a configparser"}, role_prefix="role"
+        )
 
     # wrong type for YAML
     with pytest.raises(TypeError):
-        generate_template("yaml", parsed=None, role_prefix="role")
+        generate_jinja2_template("yaml", parsed=None, role_prefix="role")
 
     # wrong type for JSON
     with pytest.raises(TypeError):
-        generate_template("json", parsed=None, role_prefix="role")
+        generate_jinja2_template("json", parsed=None, role_prefix="role")
 
     # unsupported format, no original_text
     with pytest.raises(ValueError):
-        generate_template("bogusfmt", parsed=None, role_prefix="role")
+        generate_jinja2_template("bogusfmt", parsed=None, role_prefix="role")
 
     # unsupported format, with original_text
     with pytest.raises(ValueError):
-        generate_template(
+        generate_jinja2_template(
             "bogusfmt",
             parsed=None,
             role_prefix="role",
@@ -135,8 +137,8 @@ def test_normalize_default_value_true_false_strings():
         (("section", "foo"), "true"),
         (("section", "bar"), "FALSE"),
     ]
-    defaults_yaml = generate_defaults_yaml("role", flat_items)
-    data = yaml.safe_load(defaults_yaml)
+    ansible_yaml = generate_ansible_yaml("role", flat_items)
+    data = yaml.safe_load(ansible_yaml)
     assert data["role_section_foo"] == "true"
     assert data["role_section_bar"] == "FALSE"
 
@@ -167,14 +169,14 @@ def test_fallback_str_representer_for_unknown_type():
 def test_normalize_default_value_bool_inputs_are_stringified():
     """
     Real boolean values should be turned into quoted 'true'/'false' strings
-    by _normalize_default_value via generate_defaults_yaml.
+    by _normalize_default_value via generate_ansible_yaml.
     """
     flat_items = [
         (("section", "flag_true"), True),
         (("section", "flag_false"), False),
     ]
-    defaults_yaml = generate_defaults_yaml("role", flat_items)
-    data = yaml.safe_load(defaults_yaml)
+    ansible_yaml = generate_ansible_yaml("role", flat_items)
+    data = yaml.safe_load(ansible_yaml)
 
     assert data["role_section_flag_true"] == "true"
     assert data["role_section_flag_false"] == "false"

@@ -9,7 +9,7 @@ import yaml
 from jinjaturtle.core import (
     parse_config,
     flatten_config,
-    generate_defaults_yaml,
+    generate_ansible_yaml,
 )
 from jinjaturtle.handlers.json import JsonHandler
 
@@ -24,8 +24,8 @@ def test_json_roundtrip():
     assert fmt == "json"
 
     flat_items = flatten_config(fmt, parsed)
-    defaults_yaml = generate_defaults_yaml("foobar", flat_items)
-    defaults = yaml.safe_load(defaults_yaml)
+    ansible_yaml = generate_ansible_yaml("foobar", flat_items)
+    defaults = yaml.safe_load(ansible_yaml)
 
     # Defaults: nested keys and list indices
     assert defaults["foobar_foo"] == "bar"
@@ -35,10 +35,12 @@ def test_json_roundtrip():
     assert defaults["foobar_list_0"] == 10
     assert defaults["foobar_list_1"] == 20
 
-    # Template generation is done via JsonHandler.generate_template; we just
+    # Template generation is done via JsonHandler.generate_jinja2_template; we just
     # make sure it produces a structure with the expected placeholders.
     handler = JsonHandler()
-    templated = json.loads(handler.generate_template(parsed, role_prefix="foobar"))
+    templated = json.loads(
+        handler.generate_jinja2_template(parsed, role_prefix="foobar")
+    )
 
     assert templated["foo"] == "{{ foobar_foo }}"
     assert "foobar_nested_a" in str(templated)
@@ -47,10 +49,10 @@ def test_json_roundtrip():
     assert "foobar_list_1" in str(templated)
 
 
-def test_generate_template_json_type_error():
+def test_generate_jinja2_template_json_type_error():
     """
-    Wrong type for JSON in JsonHandler.generate_template should raise TypeError.
+    Wrong type for JSON in JsonHandler.generate_jinja2_template should raise TypeError.
     """
     handler = JsonHandler()
     with pytest.raises(TypeError):
-        handler.generate_template(parsed="not a dict", role_prefix="role")
+        handler.generate_jinja2_template(parsed="not a dict", role_prefix="role")

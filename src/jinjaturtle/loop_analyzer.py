@@ -1,3 +1,10 @@
+"""
+Loop detection and analysis for intelligent Jinja2 template generation.
+
+This module determines when config structures should use Jinja2 'for' loops
+instead of flattened scalar variables.
+"""
+
 from __future__ import annotations
 
 from collections import Counter
@@ -373,7 +380,8 @@ class LoopAnalyzer:
             # Allow some variation
             all_attrs = set().union(*attr_sets)
             common_attrs = set.intersection(*attr_sets) if attr_sets else set()
-            if len(common_attrs) / max(len(all_attrs), 1) < 0.7:
+            # Very permissive for attributes - 20% overlap is OK
+            if len(common_attrs) / max(len(all_attrs), 1) < 0.2:
                 return False
 
         # Compare child element tags
@@ -384,12 +392,16 @@ class LoopAnalyzer:
         if child_tag_sets:
             first_tags = child_tag_sets[0]
             if not all(tags == first_tags for tags in child_tag_sets):
-                # Allow some variation
+                # Allow significant variation for XML - just need SOME commonality
+                # This is important for cases like OSSEC rules where each rule
+                # has different optional child elements (if_sid, url_pcre2, etc.)
                 all_tags = set().union(*child_tag_sets)
                 common_tags = (
                     set.intersection(*child_tag_sets) if child_tag_sets else set()
                 )
-                if len(common_tags) / max(len(all_tags), 1) < 0.7:
+                # Lower threshold to 20% - if they share at least 20% of tags, consider them similar
+                # Even if they just share 'description' or 'id' fields, that's enough
+                if len(common_tags) / max(len(all_tags), 1) < 0.2:
                     return False
 
         return True

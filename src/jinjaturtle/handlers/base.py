@@ -11,7 +11,7 @@ class BaseHandler:
     Each handler is responsible for:
       - parse(path) -> parsed object
       - flatten(parsed) -> list[(path_tuple, value)]
-      - generate_template(parsed, role_prefix, original_text=None) -> str
+      - generate_jinja2_template(parsed, role_prefix, original_text=None) -> str
     """
 
     fmt: str  # e.g. "ini", "yaml", ...
@@ -22,7 +22,7 @@ class BaseHandler:
     def flatten(self, parsed: Any) -> list[tuple[tuple[str, ...], Any]]:
         raise NotImplementedError
 
-    def generate_template(
+    def generate_jinja2_template(
         self,
         parsed: Any,
         role_prefix: str,

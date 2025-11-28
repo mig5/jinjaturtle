@@ -8,8 +8,8 @@ import yaml
 from jinjaturtle.core import (
     parse_config,
     flatten_config,
-    generate_defaults_yaml,
-    generate_template,
+    generate_ansible_yaml,
+    generate_jinja2_template,
 )
 from jinjaturtle.handlers.toml import TomlHandler
 import jinjaturtle.handlers.toml as toml_module
@@ -27,8 +27,8 @@ def test_toml_sample_roundtrip():
     flat_items = flatten_config(fmt, parsed)
     assert flat_items
 
-    defaults_yaml = generate_defaults_yaml("jinjaturtle", flat_items)
-    defaults = yaml.safe_load(defaults_yaml)
+    ansible_yaml = generate_ansible_yaml("jinjaturtle", flat_items)
+    defaults = yaml.safe_load(ansible_yaml)
 
     # defaults should be a non-empty dict
     assert isinstance(defaults, dict)
@@ -42,7 +42,7 @@ def test_toml_sample_roundtrip():
 
     # template generation – **now with original_text**
     original_text = toml_path.read_text(encoding="utf-8")
-    template = generate_template(
+    template = generate_jinja2_template(
         fmt, parsed, "jinjaturtle", original_text=original_text
     )
     assert isinstance(template, str)
@@ -72,9 +72,9 @@ def test_parse_config_toml_missing_tomllib(monkeypatch):
     assert "tomllib/tomli is required" in str(exc.value)
 
 
-def test_generate_template_fallback_toml():
+def test_generate_jinja2_template_fallback_toml():
     """
-    When original_text is not provided, generate_template should use the
+    When original_text is not provided, generate_jinja2_template should use the
     structural fallback path for TOML configs.
     """
     parsed_toml = {
@@ -84,7 +84,7 @@ def test_generate_template_fallback_toml():
             "file": {"path": "/tmp/app.log"}
         },  # nested table to hit recursive walk
     }
-    tmpl_toml = generate_template("toml", parsed=parsed_toml, role_prefix="role")
+    tmpl_toml = generate_jinja2_template("toml", parsed=parsed_toml, role_prefix="role")
     assert "[server]" in tmpl_toml
     assert "role_server_port" in tmpl_toml
     assert "[logging]" in tmpl_toml or "[logging.file]" in tmpl_toml

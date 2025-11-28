@@ -9,8 +9,8 @@ from .core import (
     parse_config,
     analyze_loops,
     flatten_config,
-    generate_defaults_yaml,
-    generate_template,
+    generate_ansible_yaml,
+    generate_jinja2_template,
 )
 
 
@@ -66,10 +66,10 @@ def _main(argv: list[str] | None = None) -> int:
     flat_items = flatten_config(fmt, parsed, loop_candidates)
 
     # Generate defaults YAML (with loop collections if detected)
-    defaults_yaml = generate_defaults_yaml(args.role_name, flat_items, loop_candidates)
+    ansible_yaml = generate_ansible_yaml(args.role_name, flat_items, loop_candidates)
 
     # Generate template (with loops if detected)
-    template_str = generate_template(
+    template_str = generate_jinja2_template(
         fmt,
         parsed,
         args.role_name,
@@ -78,10 +78,10 @@ def _main(argv: list[str] | None = None) -> int:
     )
 
     if args.defaults_output:
-        Path(args.defaults_output).write_text(defaults_yaml, encoding="utf-8")
+        Path(args.defaults_output).write_text(ansible_yaml, encoding="utf-8")
     else:
         print("# defaults/main.yml")
-        print(defaults_yaml, end="")
+        print(ansible_yaml, end="")
 
     if args.template_output:
         Path(args.template_output).write_text(template_str, encoding="utf-8")
