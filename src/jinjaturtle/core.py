@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Iterable
 
+import datetime
 import yaml
 
 from .loop_analyzer import LoopAnalyzer, LoopCandidate
@@ -100,6 +101,9 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
     if handler is None:
         raise ValueError(f"Unsupported config format: {fmt}")
     parsed = handler.parse(path)
+    # Make sure datetime objects are treated as strings (TOML, YAML)
+    parsed = _stringify_timestamps(parsed)
+
     return fmt, parsed
 
 
@@ -158,17 +162,6 @@ def _path_starts_with(path: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
     return path[: len(prefix)] == prefix
 
 
-def _normalize_default_value(value: Any) -> Any:
-    """
-    Ensure that 'true' / 'false' end up as quoted strings in YAML.
-    """
-    if isinstance(value, bool):
-        return QuotedString("true" if value else "false")
-    if isinstance(value, str) and value.lower() in {"true", "false"}:
-        return QuotedString(value)
-    return value
-
-
 def generate_ansible_yaml(
     role_prefix: str,
     flat_items: list[tuple[tuple[str, ...], Any]],
@@ -182,7 +175,7 @@ def generate_ansible_yaml(
     # Add scalar variables
     for path, value in flat_items:
         var_name = make_var_name(role_prefix, path)
-        defaults[var_name] = _normalize_default_value(value)
+        defaults[var_name] = value  # No normalization - keep original types
 
     # Add loop collections
     if loop_candidates:
@@ -226,3 +219,29 @@ def generate_jinja2_template(
     return handler.generate_jinja2_template(
         parsed, role_prefix, original_text=original_text
     )
+
+
+def _stringify_timestamps(obj: Any) -> Any:
+    """
+    Recursively walk a parsed config and turn any datetime/date/time objects
+    into plain strings in ISO-8601 form.
+
+    This prevents Python datetime objects from leaking into YAML/Jinja, which
+    would otherwise reformat the value (e.g. replacing 'T' with a space).
+
+    This commonly occurs otherwise with TOML and YAML files, which sees
+    Python automatically convert those sorts of strings into datetime objects.
+    """
+    if isinstance(obj, dict):
+        return {k: _stringify_timestamps(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_stringify_timestamps(v) for v in obj]
+
+    # TOML & YAML both use the standard datetime types
+    if isinstance(obj, datetime.datetime):
+        # Use default ISO-8601: 'YYYY-MM-DDTHH:MM:SS±HH:MM' (with 'T')
+        return obj.isoformat()
+    if isinstance(obj, (datetime.date, datetime.time)):
+        return obj.isoformat()
+
+    return obj

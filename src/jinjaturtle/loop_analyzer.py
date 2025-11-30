@@ -85,14 +85,20 @@ class LoopAnalyzer:
             self._analyze_xml(parsed)
         elif fmt in ("yaml", "json", "toml"):
             self._analyze_dict_like(parsed, path=())
-        # INI files are typically flat key-value, not suitable for loops
+        elif fmt == "ini":
+            # INI files are typically flat key-value, not suitable for loops
+            pass
 
         # Sort by path depth (process parent structures before children)
         self.candidates.sort(key=lambda c: len(c.path))
         return self.candidates
 
     def _analyze_dict_like(
-        self, obj: Any, path: tuple[str, ...], depth: int = 0
+        self,
+        obj: Any,
+        path: tuple[str, ...],
+        depth: int = 0,
+        parent_is_list: bool = False,
     ) -> None:
         """Recursively analyze dict/list structures."""
 
@@ -111,9 +117,16 @@ class LoopAnalyzer:
 
             # Recurse into dict values
             for key, value in obj.items():
-                self._analyze_dict_like(value, path + (str(key),), depth + 1)
+                self._analyze_dict_like(
+                    value, path + (str(key),), depth + 1, parent_is_list=False
+                )
 
         elif isinstance(obj, list):
+            # Don't create loop candidates for nested lists (lists inside lists)
+            # These are too complex for clean template generation and should fall back to scalar handling
+            if parent_is_list:
+                return
+
             # Check if this list is homogeneous
             if len(obj) >= self.MIN_ITEMS_FOR_LOOP:
                 candidate = self._check_list_collection(obj, path)
@@ -123,8 +136,11 @@ class LoopAnalyzer:
                     return
 
             # If not a good loop candidate, recurse into items
+            # Pass parent_is_list=True so nested lists won't create loop candidates
             for i, item in enumerate(obj):
-                self._analyze_dict_like(item, path + (str(i),), depth + 1)
+                self._analyze_dict_like(
+                    item, path + (str(i),), depth + 1, parent_is_list=True
+                )
 
     def _check_list_collection(
         self, items: list[Any], path: tuple[str, ...]
@@ -185,44 +201,54 @@ class LoopAnalyzer:
 
         Example: {"server1": {...}, "server2": {...}} where all values
         have the same structure.
+
+        NOTE: Currently disabled for TOML compatibility. TOML's dict-of-tables
+        syntax ([servers.alpha], [servers.beta]) cannot be easily converted to
+        loops without restructuring the entire TOML format. To maintain consistency
+        between Ansible YAML and Jinja2 templates, we treat these as scalars.
         """
 
-        if not obj:
-            return None
-
-        values = list(obj.values())
-
-        # Check type homogeneity
-        value_types = [type(v).__name__ for v in values]
-        type_counts = Counter(value_types)
-
-        if len(type_counts) != 1:
-            return None
-
-        value_type = value_types[0]
-
-        # Only interested in dict values for dict collections
-        # (scalar-valued dicts stay as scalars)
-        if value_type != "dict":
-            return None
-
-        # Check structural homogeneity
-        schema = self._analyze_dict_schema(values)
-        if schema in ("simple_dict", "homogeneous"):
-            confidence = 0.9 if schema == "simple_dict" else 0.8
-
-            # Convert dict to list of items with 'key' added
-            items_with_keys = [{"_key": k, **v} for k, v in obj.items()]
-
-            return LoopCandidate(
-                path=path,
-                loop_var=self._derive_loop_var(path, singular=True),
-                items=items_with_keys,
-                item_schema="simple_dict",
-                confidence=confidence,
-            )
-
+        # TODO: Re-enable this if we implement proper dict-of-tables loop generation
+        # For now, return None to use scalar handling
         return None
+
+        # Original logic preserved below for reference:
+        # if not obj:
+        #     return None
+        #
+        # values = list(obj.values())
+        #
+        # # Check type homogeneity
+        # value_types = [type(v).__name__ for v in values]
+        # type_counts = Counter(value_types)
+        #
+        # if len(type_counts) != 1:
+        #     return None
+        #
+        # value_type = value_types[0]
+        #
+        # # Only interested in dict values for dict collections
+        # # (scalar-valued dicts stay as scalars)
+        # if value_type != "dict":
+        #     return None
+        #
+        # # Check structural homogeneity
+        # schema = self._analyze_dict_schema(values)
+        # if schema in ("simple_dict", "homogeneous"):
+        #     confidence = 0.9 if schema == "simple_dict" else 0.8
+        #
+        #     # Convert dict to list of items with 'key' added
+        #     items_with_keys = [{"_key": k, **v} for k, v in obj.items()]
+        #
+        #     return LoopCandidate(
+        #         path=path,
+        #         loop_var=self._derive_loop_var(path, singular=True),
+        #         items=items_with_keys,
+        #         item_schema="simple_dict",
+        #         confidence=confidence,
+        #     )
+        #
+        # return None
 
     def _analyze_dict_schema(
         self, dicts: list[dict[str, Any]]
@@ -316,7 +342,7 @@ class LoopAnalyzer:
 
         XML is particularly suited for loops when we have repeated sibling elements.
         """
-        import xml.etree.ElementTree as ET
+        import xml.etree.ElementTree as ET  # nosec B405
 
         if not isinstance(root, ET.Element):
             return

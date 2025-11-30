@@ -15,7 +15,7 @@ jobs:
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            black pyflakes3 python3-bandit
+            black pyflakes3 python3-bandit vulture
 
       - name: Run linters
         run: |
@@ -24,3 +24,4 @@ jobs:
           pyflakes3 src/*
           pyflakes3 tests/*
           bandit -s B110 -r src/
+          vulture .

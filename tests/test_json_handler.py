@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import json
 import pytest
 import yaml
 
@@ -10,6 +9,8 @@ from jinjaturtle.core import (
     parse_config,
     flatten_config,
     generate_ansible_yaml,
+    analyze_loops,
+    generate_jinja2_template,
 )
 from jinjaturtle.handlers.json import JsonHandler
 
@@ -23,30 +24,34 @@ def test_json_roundtrip():
     fmt, parsed = parse_config(json_path)
     assert fmt == "json"
 
-    flat_items = flatten_config(fmt, parsed)
-    ansible_yaml = generate_ansible_yaml("foobar", flat_items)
+    # With loop detection
+    loop_candidates = analyze_loops(fmt, parsed)
+    flat_items = flatten_config(fmt, parsed, loop_candidates)
+    ansible_yaml = generate_ansible_yaml("foobar", flat_items, loop_candidates)
     defaults = yaml.safe_load(ansible_yaml)
 
-    # Defaults: nested keys and list indices
+    # Defaults: nested keys
     assert defaults["foobar_foo"] == "bar"
     assert defaults["foobar_nested_a"] == 1
-    # Bool normalized to string "true"
-    assert defaults["foobar_nested_b"] == "true"
-    assert defaults["foobar_list_0"] == 10
-    assert defaults["foobar_list_1"] == 20
+    # Booleans are now preserved as booleans (not stringified)
+    assert defaults["foobar_nested_b"] is True
+    # List should be a list (not flattened to scalars)
+    assert defaults["foobar_list"] == [10, 20]
 
-    # Template generation is done via JsonHandler.generate_jinja2_template; we just
-    # make sure it produces a structure with the expected placeholders.
-    handler = JsonHandler()
-    templated = json.loads(
-        handler.generate_jinja2_template(parsed, role_prefix="foobar")
-    )
+    # Template generation with loops
+    template = generate_jinja2_template("json", parsed, "foobar", None, loop_candidates)
 
-    assert templated["foo"] == "{{ foobar_foo }}"
-    assert "foobar_nested_a" in str(templated)
-    assert "foobar_nested_b" in str(templated)
-    assert "foobar_list_0" in str(templated)
-    assert "foobar_list_1" in str(templated)
+    # Template should use | tojson for type preservation
+    assert "{{ foobar_foo | tojson }}" in template
+    assert "{{ foobar_nested_a | tojson }}" in template
+    assert "{{ foobar_nested_b | tojson }}" in template
+
+    # List should use loop (not scalar indices)
+    assert "{% for" in template
+    assert "foobar_list" in template
+    # Should NOT have scalar indices
+    assert "foobar_list_0" not in template
+    assert "foobar_list_1" not in template
 
 
 def test_generate_jinja2_template_json_type_error():

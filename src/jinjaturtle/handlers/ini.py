@@ -12,7 +12,7 @@ class IniHandler(BaseHandler):
 
     def parse(self, path: Path) -> configparser.ConfigParser:
         parser = configparser.ConfigParser()
-        parser.optionxform = str  # preserve key case
+        parser.optionxform = str  # noqa
         with path.open("r", encoding="utf-8") as f:
             parser.read_file(f)
         return parser

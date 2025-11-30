@@ -418,8 +418,8 @@ class XmlHandler(BaseHandler):
                 # Use simple variable reference - attributes should always exist
                 elem.set(attr_name, f"{{{{ {loop_var}.{attr_name} }}}}")
             elif key == "_text":
-                # Simple text content
-                elem.text = f"{{{{ {loop_var} }}}}"
+                # Simple text content - use ._text accessor for dict-based items
+                elem.text = f"{{{{ {loop_var}._text }}}}"
             elif key == "value":
                 # Text with attributes/children
                 elem.text = f"{{{{ {loop_var}.value }}}}"

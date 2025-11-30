@@ -168,8 +168,8 @@ def test_fallback_str_representer_for_unknown_type():
 
 def test_normalize_default_value_bool_inputs_are_stringified():
     """
-    Real boolean values should be turned into quoted 'true'/'false' strings
-    by _normalize_default_value via generate_ansible_yaml.
+    Boolean values are now preserved as booleans in YAML (not stringified).
+    This supports proper type preservation for JSON and other formats.
     """
     flat_items = [
         (("section", "flag_true"), True),
@@ -178,8 +178,9 @@ def test_normalize_default_value_bool_inputs_are_stringified():
     ansible_yaml = generate_ansible_yaml("role", flat_items)
     data = yaml.safe_load(ansible_yaml)
 
-    assert data["role_section_flag_true"] == "true"
-    assert data["role_section_flag_false"] == "false"
+    # Booleans are now preserved as booleans
+    assert data["role_section_flag_true"] is True
+    assert data["role_section_flag_false"] is False
 
 
 def test_flatten_config_unsupported_format():

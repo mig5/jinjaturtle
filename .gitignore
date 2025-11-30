@@ -7,3 +7,4 @@ dist
 *.yml
 *.j2
 *.toml
+regenerated_*

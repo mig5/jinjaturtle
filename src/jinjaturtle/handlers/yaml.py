@@ -124,7 +124,8 @@ class YamlHandler(DictLikeHandler):
                     replacement = f"{{{{ {var_name} }}}}"
 
                 leading = rest[: len(rest) - len(rest.lstrip(" \t"))]
-                new_stripped = f"{key}: {leading}{replacement}{comment_part}"
+                new_rest = f"{leading}{replacement}{comment_part}"
+                new_stripped = f"{key}:{new_rest}"
                 out_lines.append(
                     " " * indent
                     + new_stripped
@@ -281,7 +282,8 @@ class YamlHandler(DictLikeHandler):
                     replacement = f"{{{{ {var_name} }}}}"
 
                 leading = rest[: len(rest) - len(rest.lstrip(" \t"))]
-                new_stripped = f"{key}: {leading}{replacement}{comment_part}"
+                new_rest = f"{leading}{replacement}{comment_part}"
+                new_stripped = f"{key}:{new_rest}"
                 out_lines.append(
                     " " * indent
                     + new_stripped
@@ -378,10 +380,10 @@ class YamlHandler(DictLikeHandler):
             # Dict-style: key: {% for ... %}
             key = candidate.path[-1] if candidate.path else "items"
             lines.append(f"{indent_str}{key}:")
-            lines.append(f"{indent_str}  {{% for {item_var} in {collection_var} %}}")
+            lines.append(f"{indent_str}  {{% for {item_var} in {collection_var} -%}}")
         else:
             # List-style: just the loop
-            lines.append(f"{indent_str}{{% for {item_var} in {collection_var} %}}")
+            lines.append(f"{indent_str}{{% for {item_var} in {collection_var} -%}}")
 
         # Generate template for item structure
         if candidate.items:

@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-
-import pytest
-
 from jinjaturtle import cli
 
 SAMPLES_DIR = Path(__file__).parent / "samples"
