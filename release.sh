@@ -2,7 +2,8 @@
 
 set -eo pipefail
 
-rm -rf dist
+# Clean caches etc
+filedust -y .
 
 # Publish to Pypi
 poetry build
