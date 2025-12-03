@@ -24,3 +24,17 @@ jobs:
       - name: Run trivy
         run: |
           trivy fs --no-progress --ignore-unfixed --format table --disable-telemetry .
+
+      # Notify if any previous step in this job failed
+      - name: Notify on failure
+        if: ${{ failure() }}
+        env:
+          WEBHOOK_URL: ${{ secrets.NODERED_WEBHOOK_URL }}
+          REPOSITORY: ${{ forgejo.repository }}
+          RUN_NUMBER: ${{ forgejo.run_number }}
+          SERVER_URL: ${{ forgejo.server_url }}
+        run: |
+          curl -X POST \
+               -H "Content-Type: application/json" \
+               -d "{\"repository\":\"$REPOSITORY\",\"run_number\":\"$RUN_NUMBER\",\"status\":\"failure\",\"url\":\"$SERVER_URL/$REPOSITORY/actions/runs/$RUN_NUMBER\"}" \
+               "$WEBHOOK_URL"
