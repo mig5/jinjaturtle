@@ -5,8 +5,7 @@
 </div>
 
 JinjaTurtle is a command-line tool to help you generate Jinja2 templates and
-Ansible `defaults/main.yml` files from a native configuration file of a piece
-of software.
+Ansible inventory from a native configuration file of a piece of software.
 
 ## How it works
 
@@ -17,10 +16,10 @@ of software.
    role.
  * A Jinja2 file is generated from the file with those parameter key names
    injected as the `{{ variable }}` names.
- * A `defaults/main.yml` is generated with those key names and the *values*
-   taken from the original config file as the defaults.
+ * An Ansible inventory YAML file is generated with those key names and the
+   *values* taken from the original config file as the defaults.
 
-By default, the Jinja2 template and the `defaults/main.yml` are printed to
+By default, the Jinja2 template and the Ansible inventory are printed to
 stdout. However, it is possible to output the results to new files.
 
 ## What sort of config files can it handle?
@@ -77,7 +76,7 @@ jinjaturtle php.ini \
 ```
 usage: jinjaturtle [-h] -r ROLE_NAME [-f {json,ini,toml,yaml,xml}] [-d DEFAULTS_OUTPUT] [-t TEMPLATE_OUTPUT] config
 
-Convert a config file into an Ansible defaults file and Jinja2 template.
+Convert a config file into Ansible inventory and a Jinja2 template.
 
 positional arguments:
   config                Path to the source configuration file (TOML or INI-style).
@@ -86,7 +85,7 @@ options:
   -h, --help            show this help message and exit
   -r, --role-name ROLE_NAME
                         Ansible role name, used as variable prefix (e.g. cometbft).
-  -f, --format {ini,toml}
+  -f, --format {ini,json,toml,xml}
                         Force config format instead of auto-detecting from filename.
   -d, --defaults-output DEFAULTS_OUTPUT
                         Path to write defaults/main.yml. If omitted, defaults YAML is printed to stdout.
