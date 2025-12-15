@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-import tomllib
 from pathlib import Path
 from typing import Any
 
 from . import DictLikeHandler
 from ..loop_analyzer import LoopCandidate
+
+try:
+    import tomllib
+except Exception:
+    import tomli as tomllib
 
 
 class TomlHandler(DictLikeHandler):

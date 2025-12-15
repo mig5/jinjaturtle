@@ -193,8 +193,10 @@ def main():
                 else:
                     print(colorize("⚠️  YAML data structures DIFFER", "yellow"))
             elif fmt == "toml":
-                import tomllib
-
+                try:
+                    import tomllib
+                except Exception:
+                    import tomli as tomllib
                 if tomllib.loads(original_text) == tomllib.loads(regenerated_text):
                     print(colorize("✅ TOML data structures are IDENTICAL", "green"))
                 else:
