@@ -234,11 +234,11 @@ class TestRoundtripTOML:
         toml_text = """
         name = "test"
         ports = [8080, 8081, 8082]
-        
+
         [[database]]
         host = "db1.example.com"
         port = 5432
-        
+
         [[database]]
         host = "db2.example.com"
         port = 5433

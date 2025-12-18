@@ -141,7 +141,7 @@ class TestTemplateYamlConsistency:
         [[database]]
         host = "db1.example.com"
         port = 5432
-        
+
         [[database]]
         host = "db2.example.com"
         port = 5433
@@ -218,15 +218,15 @@ class TestTemplateYamlConsistency:
         name = "myapp"
         version = "1.0"
         ports = [8080, 8081, 8082]
-        
+
         [database]
         host = "localhost"
         port = 5432
-        
+
         [[servers]]
         name = "web1"
         ip = "10.0.0.1"
-        
+
         [[servers]]
         name = "web2"
         ip = "10.0.0.2"
@@ -485,7 +485,7 @@ class TestRegressionBugs:
         [[database]]
         host = "db1"
         port = 5432
-        
+
         [[database]]
         host = "db2"
         port = 5433
