@@ -1,3 +1,9 @@
+jinjaturtle (0.3.4) unstable; urgency=medium
+
+  * Render json files in a more pretty way
+
+ -- Miguel Jacq <mig@mig5.net>  Sun, 21 Dec 2025 11:20:00 +1100
+
 jinjaturtle (0.3.3) unstable; urgency=medium
 
   * Fixes for tomli on Ubuntu 22
