@@ -63,11 +63,6 @@ _HANDLERS["yaml"] = _YAML_HANDLER
 _HANDLERS["xml"] = _XML_HANDLER
 
 
-def get_supported_formats() -> set[str]:
-    """Return the set of supported input formats."""
-    return set(_HANDLERS.keys())
-
-
 def dump_yaml(data: Any, *, sort_keys: bool = True) -> str:
     """Dump YAML using JinjaTurtle's dumper settings.
 
