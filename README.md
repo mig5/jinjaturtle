@@ -5,11 +5,12 @@
 </div>
 
 JinjaTurtle is a command-line tool to help you generate Jinja2 templates and
-Ansible inventory from a native configuration file of a piece of software.
+Ansible inventory from a native configuration file (or files) of a piece of
+software.
 
 ## How it works
 
- * The config file is examined
+ * The config file(s) is/are examined
  * Parameter key names are generated based on the parameter names in the
    config file. In keeping with Ansible best practices, you pass a prefix
    for the key names, which should typically match the name of your Ansible
@@ -17,7 +18,7 @@ Ansible inventory from a native configuration file of a piece of software.
  * A Jinja2 file is generated from the file with those parameter key names
    injected as the `{{ variable }}` names.
  * An Ansible inventory YAML file is generated with those key names and the
-   *values* taken from the original config file as the defaults.
+   *values* taken from the original config file as the default vars.
 
 By default, the Jinja2 template and the Ansible inventory are printed to
 stdout. However, it is possible to output the results to new files.
@@ -37,6 +38,29 @@ You may need or wish to tidy up the config to suit your needs.
 
 The goal here is really to *speed up* converting files into Ansible/Jinja2,
 but not necessarily to make it perfect.
+
+## Can I convert multiple files at once?
+
+Certainly! Pass the folder name instead of a specific file name, and JinjaTurtle
+will convert any files it understands in that folder, storing all the various
+vars in the destination defaults yaml file, and converting each file into a
+Jinja2 template per file type.
+
+If all the files had the same 'type', there'll be one Jinja2 template.
+
+You can also pass `--recursive` to recurse into subfolders.
+
+Note: when using 'folder' mode and multiple files of the same type, their vars
+will be listed under an 'items' parent key in the yaml, each with an `id` key.
+You'll then want to use a `loop` in Ansible later, e.g:
+
+```yaml
+- name: Render configs
+  template:
+    src: config.j2
+    dest: "/somewhere/{{ item.id }}"
+  loop: "{{ myrole_items }}"
+```
 
 ## How to install it
 
@@ -117,7 +141,7 @@ options:
   -f, --format {ini,json,toml,xml}
                         Force config format instead of auto-detecting from filename.
   -d, --defaults-output DEFAULTS_OUTPUT
-                        Path to write defaults/main.yml. If omitted, defaults YAML is printed to stdout.
+                        Path to write defaults/main.yml. If omitted, default vars are printed to stdout.
   -t, --template-output TEMPLATE_OUTPUT
                         Path to write the Jinja2 config template. If omitted, template is printed to stdout.
 ```

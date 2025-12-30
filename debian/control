@@ -25,4 +25,4 @@ Depends:
  python3-toml,
  python3-defusedxml,
  python3-jinja2
-Description: Convert config files into Ansible defaults and Jinja2 templates.
+Description: Convert config files into Ansible vars and Jinja2 templates.

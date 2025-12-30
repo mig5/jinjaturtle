@@ -1,9 +1,9 @@
-%global upstream_version 0.3.4
+%global upstream_version 0.3.5
 
 Name:           jinjaturtle
 Version:        %{upstream_version}
 Release:        1%{?dist}.jinjaturtle1
-Summary:        Convert config files into Ansible defaults and Jinja2 templates.
+Summary:        Convert config files into Ansible vars and Jinja2 templates.
 
 License:        GPL-3.0-or-later
 URL:            https://git.mig5.net/mig5/jinjaturtle
@@ -42,5 +42,7 @@ Convert config files into Ansible defaults and Jinja2 templates.
 %{_bindir}/jinjaturtle
 
 %changelog
+* Tue Dec 30 2025 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
+- Support converting a directory (optionally recursively) instead of just an individual file.
 * Sat Dec 27 2025 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
 - Initial RPM packaging for Fedora 42

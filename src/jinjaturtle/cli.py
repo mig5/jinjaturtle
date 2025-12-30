@@ -13,6 +13,8 @@ from .core import (
     generate_jinja2_template,
 )
 
+from .multi import process_directory
+
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
@@ -21,13 +23,21 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "config",
-        help="Path to the source configuration file (TOML, YAML, JSON or INI-style).",
+        help=(
+            "Path to a config file OR a folder containing supported config files. "
+            "Supported: .toml, .yaml/.yml, .json, .ini/.cfg/.conf, .xml"
+        ),
     )
     ap.add_argument(
         "-r",
         "--role-name",
-        required=True,
-        help="Ansible role name, used as variable prefix (e.g. cometbft).",
+        default="jinjaturtle",
+        help="Ansible role name, used as variable prefix (default: jinjaturtle).",
+    )
+    ap.add_argument(
+        "--recursive",
+        action="store_true",
+        help="When CONFIG is a folder, recurse into subfolders.",
     )
     ap.add_argument(
         "-f",
@@ -54,6 +64,40 @@ def _main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     config_path = Path(args.config)
+
+    # Folder mode
+    if config_path.is_dir():
+        defaults_yaml, outputs = process_directory(
+            config_path, args.recursive, args.role_name
+        )
+
+        # Write defaults
+        if args.defaults_output:
+            Path(args.defaults_output).write_text(defaults_yaml, encoding="utf-8")
+        else:
+            print("# defaults/main.yml")
+            print(defaults_yaml, end="")
+
+        # Write templates
+        if args.template_output:
+            out_path = Path(args.template_output)
+            if len(outputs) == 1 and not out_path.is_dir():
+                out_path.write_text(outputs[0].template, encoding="utf-8")
+            else:
+                out_path.mkdir(parents=True, exist_ok=True)
+                for o in outputs:
+                    (out_path / f"config.{o.fmt}.j2").write_text(
+                        o.template, encoding="utf-8"
+                    )
+        else:
+            for o in outputs:
+                name = "config.j2" if len(outputs) == 1 else f"config.{o.fmt}.j2"
+                print(f"# {name}")
+                print(o.template, end="")
+
+        return 0
+
+    # Single-file mode (existing behaviour)
     config_text = config_path.read_text(encoding="utf-8")
 
     # Parse the config
@@ -89,7 +133,7 @@ def _main(argv: list[str] | None = None) -> int:
         print("# config.j2")
         print(template_str, end="")
 
-    return True
+    return 0
 
 
 def main() -> None:

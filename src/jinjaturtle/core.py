@@ -63,6 +63,27 @@ _HANDLERS["yaml"] = _YAML_HANDLER
 _HANDLERS["xml"] = _XML_HANDLER
 
 
+def get_supported_formats() -> set[str]:
+    """Return the set of supported input formats."""
+    return set(_HANDLERS.keys())
+
+
+def dump_yaml(data: Any, *, sort_keys: bool = True) -> str:
+    """Dump YAML using JinjaTurtle's dumper settings.
+
+    This is used by both the single-file and multi-file code paths.
+    """
+    return yaml.dump(
+        data,
+        Dumper=_TurtleDumper,
+        sort_keys=sort_keys,
+        default_flow_style=False,
+        allow_unicode=True,
+        explicit_start=True,
+        indent=2,
+    )
+
+
 def make_var_name(role_prefix: str, path: Iterable[str]) -> str:
     """
     Wrapper for :meth:`BaseHandler.make_var_name`.
@@ -183,15 +204,7 @@ def generate_ansible_yaml(
             var_name = make_var_name(role_prefix, candidate.path)
             defaults[var_name] = candidate.items
 
-    return yaml.dump(
-        defaults,
-        Dumper=_TurtleDumper,
-        sort_keys=True,
-        default_flow_style=False,
-        allow_unicode=True,
-        explicit_start=True,
-        indent=2,
-    )
+    return dump_yaml(defaults, sort_keys=True)
 
 
 def generate_jinja2_template(
