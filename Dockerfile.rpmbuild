@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-FROM fedora:42
+ARG BASE_IMAGE=fedora:42
+FROM ${BASE_IMAGE}
 
 RUN set -eux; \
     dnf -y update; \
