@@ -74,7 +74,7 @@ sudo apt update
 sudo apt install jinjaturtle
 ```
 
-### Fedora 42
+### Fedora
 
 ```bash
 sudo rpm --import https://mig5.net/static/mig5.asc
@@ -82,7 +82,7 @@ sudo rpm --import https://mig5.net/static/mig5.asc
 sudo tee /etc/yum.repos.d/mig5.repo > /dev/null << 'EOF'
 [mig5]
 name=mig5 Repository
-baseurl=https://rpm.mig5.net/rpm/$basearch
+baseurl=https://rpm.mig5.net/$releasever/rpm/$basearch
 enabled=1
 gpgcheck=1
 repo_gpgcheck=1
