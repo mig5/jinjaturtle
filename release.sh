@@ -62,11 +62,15 @@ for dist in ${DISTS[@]}; do
   mkdir -p "$RPM_REPO"
 
   docker build \
+    --no-cache \
     -f Dockerfile.rpmbuild \
     -t jinjaturtle-rpm:${release} \
     --progress=plain \
     --build-arg BASE_IMAGE=${dist} \
     .
+
+  rm -rf "$PWD/dist/rpm"/*
+  mkdir -p "$PWD/dist/rpm"
 
   docker run --rm -v "$PWD":/src -v "$PWD/dist/rpm":/out jinjaturtle-rpm:${release}
   sudo chown -R "${USER}" "$PWD/dist"
