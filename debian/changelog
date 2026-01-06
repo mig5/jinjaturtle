@@ -1,3 +1,9 @@
+jinjaturtle (0.4.0) unstable; urgency=medium
+
+  * Support converting systemd files and postfix main.cf
+
+ -- Miguel Jacq <mig@mig5.net>  Tue, 06 Jan 2026 12:00:00 +1100
+
 jinjaturtle (0.3.5) unstable; urgency=medium
 
   * Support converting a directory (optionally recursively) instead of just an individual file.
