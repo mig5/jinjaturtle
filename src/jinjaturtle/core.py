@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import datetime
+import re
 import yaml
 
 from .loop_analyzer import LoopAnalyzer, LoopCandidate
@@ -14,6 +15,8 @@ from .handlers import (
     TomlHandler,
     YamlHandler,
     XmlHandler,
+    PostfixMainHandler,
+    SystemdUnitHandler,
 )
 
 
@@ -56,11 +59,17 @@ _TOML_HANDLER = TomlHandler()
 _YAML_HANDLER = YamlHandler()
 _XML_HANDLER = XmlHandler()
 
+_POSTFIX_HANDLER = PostfixMainHandler()
+_SYSTEMD_HANDLER = SystemdUnitHandler()
+
 _HANDLERS["ini"] = _INI_HANDLER
 _HANDLERS["json"] = _JSON_HANDLER
 _HANDLERS["toml"] = _TOML_HANDLER
 _HANDLERS["yaml"] = _YAML_HANDLER
 _HANDLERS["xml"] = _XML_HANDLER
+
+_HANDLERS["postfix"] = _POSTFIX_HANDLER
+_HANDLERS["systemd"] = _SYSTEMD_HANDLER
 
 
 def dump_yaml(data: Any, *, sort_keys: bool = True) -> str:
@@ -86,24 +95,92 @@ def make_var_name(role_prefix: str, path: Iterable[str]) -> str:
     return BaseHandler.make_var_name(role_prefix, path)
 
 
+def _read_head(path: Path, max_bytes: int = 65536) -> str:
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            return f.read(max_bytes)
+    except OSError:
+        return ""
+
+
+_SYSTEMD_SUFFIXES: set[str] = {
+    ".service",
+    ".socket",
+    ".target",
+    ".timer",
+    ".path",
+    ".mount",
+    ".automount",
+    ".slice",
+    ".swap",
+    ".scope",
+    ".link",
+    ".netdev",
+    ".network",
+}
+
+
+def _looks_like_systemd(text: str) -> bool:
+    # Be conservative: many INI-style configs have [section] and key=value.
+    # systemd unit files almost always contain one of these well-known sections.
+    if re.search(
+        r"^\s*\[(Unit|Service|Install|Socket|Timer|Path|Mount|Automount|Slice|Swap|Scope)\]\s*$",
+        text,
+        re.M,
+    ) and re.search(r"^\s*\w[\w\-]*\s*=", text, re.M):
+        return True
+    return False
+
+
 def detect_format(path: Path, explicit: str | None = None) -> str:
     """
-    Determine config format from argument or filename.
+    Determine config format.
+
+    For unambiguous extensions (json/yaml/toml/xml/ini), we rely on the suffix.
+    For ambiguous extensions like '.conf' (or no extension), we sniff the content.
     """
     if explicit:
         return explicit
+
     suffix = path.suffix.lower()
     name = path.name.lower()
+
+    # Unambiguous extensions
     if suffix == ".toml":
         return "toml"
     if suffix in {".yaml", ".yml"}:
         return "yaml"
     if suffix == ".json":
         return "json"
-    if suffix in {".ini", ".cfg", ".conf"} or name.endswith(".ini"):
-        return "ini"
     if suffix == ".xml":
         return "xml"
+
+    # Special-ish INI-like formats
+    if suffix in {".ini", ".cfg"} or name.endswith(".ini"):
+        return "ini"
+    if suffix == ".repo":
+        return "ini"
+
+    # systemd units
+    if suffix in _SYSTEMD_SUFFIXES:
+        return "systemd"
+
+    # well-known filenames
+    if name == "main.cf":
+        return "postfix"
+
+    head = _read_head(path)
+
+    # Content sniffing
+    if _looks_like_systemd(head):
+        return "systemd"
+
+    # Ambiguous .conf/.cf defaults to INI-ish if no better match
+    if suffix in {".conf", ".cf"}:
+        if name == "main.cf":
+            return "postfix"
+        return "ini"
+
     # Fallback: treat as INI-ish
     return "ini"
 

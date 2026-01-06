@@ -42,7 +42,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "-f",
         "--format",
-        choices=["ini", "json", "toml", "yaml", "xml"],
+        choices=["ini", "json", "toml", "yaml", "xml", "postfix", "systemd"],
         help="Force config format instead of auto-detecting from filename.",
     )
     ap.add_argument(

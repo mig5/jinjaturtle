@@ -127,12 +127,12 @@ jinjaturtle php.ini \
 ## Full usage info
 
 ```
-usage: jinjaturtle [-h] -r ROLE_NAME [-f {json,ini,toml,yaml,xml}] [-d DEFAULTS_OUTPUT] [-t TEMPLATE_OUTPUT] config
+usage: jinjaturtle [-h] -r ROLE_NAME [-f {json,ini,toml,yaml,xml,postfix,systemd}] [-d DEFAULTS_OUTPUT] [-t TEMPLATE_OUTPUT] config
 
 Convert a config file into Ansible inventory and a Jinja2 template.
 
 positional arguments:
-  config                Path to the source configuration file (TOML or INI-style).
+  config                Path to the source configuration file.
 
 options:
   -h, --help            show this help message and exit
@@ -145,6 +145,15 @@ options:
   -t, --template-output TEMPLATE_OUTPUT
                         Path to write the Jinja2 config template. If omitted, template is printed to stdout.
 ```
+
+## Additional supported formats
+
+JinjaTurtle can also template some common "bespoke" config formats:
+
+- **Postfix main.cf** (`main.cf`) → `--format postfix`
+- **systemd unit files** (`*.service`, `*.socket`, etc.) → `--format systemd`
+
+For ambiguous extensions like `*.conf`, JinjaTurtle uses lightweight content sniffing; you can always force a specific handler via `--format`.
 
 
 ## Found a bug, have a suggestion?

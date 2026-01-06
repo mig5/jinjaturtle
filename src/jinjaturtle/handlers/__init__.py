@@ -8,6 +8,9 @@ from .toml import TomlHandler
 from .yaml import YamlHandler
 from .xml import XmlHandler
 
+from .postfix import PostfixMainHandler
+from .systemd import SystemdUnitHandler
+
 __all__ = [
     "BaseHandler",
     "DictLikeHandler",
@@ -16,4 +19,6 @@ __all__ = [
     "TomlHandler",
     "YamlHandler",
     "XmlHandler",
+    "PostfixMainHandler",
+    "SystemdUnitHandler",
 ]

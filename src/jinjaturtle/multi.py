@@ -36,7 +36,7 @@ SUPPORTED_SUFFIXES: dict[str, set[str]] = {
     "toml": {".toml"},
     "yaml": {".yaml", ".yml"},
     "json": {".json"},
-    "ini": {".ini", ".cfg", ".conf"},
+    "ini": {".ini", ".cfg", ".conf", ".repo"},
     "xml": {".xml"},
 }
 
@@ -584,6 +584,9 @@ class FormatOutput:
     items: list[dict[str, Any]]
 
 
+FOLDER_SUPPORTED_FORMATS: set[str] = {"json", "yaml", "toml", "ini", "xml"}
+
+
 def process_directory(
     root: Path, recursive: bool, role_prefix: str
 ) -> tuple[str, list[FormatOutput]]:
@@ -596,7 +599,13 @@ def process_directory(
     grouped: dict[str, list[tuple[Path, Any]]] = defaultdict(list)
     for p in files:
         fmt, parsed = parse_config(p, None)
+        if fmt not in FOLDER_SUPPORTED_FORMATS:
+            # Directory mode only supports a subset of formats for now.
+            continue
         grouped[fmt].append((p, parsed))
+
+    if not grouped:
+        raise ValueError(f"No folder-supported config files found under: {root}")
 
     multiple_formats = len(grouped) > 1
     outputs: list[FormatOutput] = []
