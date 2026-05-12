@@ -25,7 +25,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "config",
         help=(
             "Path to a config file OR a folder containing supported config files. "
-            "Supported: .toml, .yaml/.yml, .json, .ini/.cfg/.conf, .xml"
+            "Supported: .toml, .yaml/.yml, .json, .ini/.cfg/.conf, .xml, ssh_config/sshd_config"
         ),
     )
     ap.add_argument(
@@ -42,7 +42,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "-f",
         "--format",
-        choices=["ini", "json", "toml", "yaml", "xml", "postfix", "systemd"],
+        choices=["ini", "json", "toml", "yaml", "xml", "postfix", "systemd", "ssh"],
         help="Force config format instead of auto-detecting from filename.",
     )
     ap.add_argument(

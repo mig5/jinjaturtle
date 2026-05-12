@@ -10,6 +10,7 @@ from .xml import XmlHandler
 
 from .postfix import PostfixMainHandler
 from .systemd import SystemdUnitHandler
+from .ssh import SshConfigHandler
 
 __all__ = [
     "BaseHandler",
@@ -21,4 +22,5 @@ __all__ = [
     "XmlHandler",
     "PostfixMainHandler",
     "SystemdUnitHandler",
+    "SshConfigHandler",
 ]

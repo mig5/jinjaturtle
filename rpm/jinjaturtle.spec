@@ -1,4 +1,4 @@
-%global upstream_version 0.4.0
+%global upstream_version 0.5.0
 
 Name:           jinjaturtle
 Version:        %{upstream_version}
@@ -42,6 +42,8 @@ Convert config files into Ansible defaults and Jinja2 templates.
 %{_bindir}/jinjaturtle
 
 %changelog
+* Tue May 11 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
+- Support ssh configs
 * Tue Jan 06 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
 - Support converting systemd files and postfix main.cf
 * Tue Dec 30 2025 Miguel Jacq <mig@mig5.net> - %{version}-%{release}

@@ -17,6 +17,7 @@ from .handlers import (
     XmlHandler,
     PostfixMainHandler,
     SystemdUnitHandler,
+    SshConfigHandler,
 )
 
 
@@ -61,6 +62,7 @@ _XML_HANDLER = XmlHandler()
 
 _POSTFIX_HANDLER = PostfixMainHandler()
 _SYSTEMD_HANDLER = SystemdUnitHandler()
+_SSH_HANDLER = SshConfigHandler()
 
 _HANDLERS["ini"] = _INI_HANDLER
 _HANDLERS["json"] = _JSON_HANDLER
@@ -70,6 +72,7 @@ _HANDLERS["xml"] = _XML_HANDLER
 
 _HANDLERS["postfix"] = _POSTFIX_HANDLER
 _HANDLERS["systemd"] = _SYSTEMD_HANDLER
+_HANDLERS["ssh"] = _SSH_HANDLER
 
 
 def dump_yaml(data: Any, *, sort_keys: bool = True) -> str:
@@ -132,6 +135,72 @@ def _looks_like_systemd(text: str) -> bool:
     return False
 
 
+def _looks_like_ssh_config(text: str) -> bool:
+    """Conservatively sniff OpenSSH config snippets.
+
+    This is intentionally stricter than generic key/value detection so random
+    .conf files are not misclassified. Exact ssh_config/sshd_config filenames
+    are handled separately above.
+    """
+    meaningful: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        meaningful.append(stripped)
+        if len(meaningful) >= 20:
+            break
+
+    if not meaningful:
+        return False
+
+    ssh_keywords = {
+        "acceptenv",
+        "addressfamily",
+        "allowgroups",
+        "allowtcpforwarding",
+        "allowusers",
+        "authenticationmethods",
+        "authorizedkeysfile",
+        "banner",
+        "ciphers",
+        "chrootdirectory",
+        "denyusers",
+        "forcecommand",
+        "forwardagent",
+        "host",
+        "hostbasedauthentication",
+        "hostkey",
+        "hostname",
+        "identityfile",
+        "include",
+        "kexalgorithms",
+        "listenaddress",
+        "loglevel",
+        "match",
+        "passwordauthentication",
+        "permitrootlogin",
+        "port",
+        "proxycommand",
+        "proxyjump",
+        "pubkeyauthentication",
+        "sendenv",
+        "subsystem",
+        "user",
+        "x11forwarding",
+    }
+
+    hits = 0
+    for line in meaningful:
+        m = re.match(r"^([^\s=#]+)", line)
+        if not m:
+            continue
+        if m.group(1).lower() in ssh_keywords:
+            hits += 1
+
+    return hits >= 2 or (len(meaningful) <= 3 and hits >= 1)
+
+
 def detect_format(path: Path, explicit: str | None = None) -> str:
     """
     Determine config format.
@@ -168,6 +237,8 @@ def detect_format(path: Path, explicit: str | None = None) -> str:
     # well-known filenames
     if name == "main.cf":
         return "postfix"
+    if name in {"ssh_config", "sshd_config"}:
+        return "ssh"
 
     head = _read_head(path)
 
@@ -179,6 +250,8 @@ def detect_format(path: Path, explicit: str | None = None) -> str:
     if suffix in {".conf", ".cf"}:
         if name == "main.cf":
             return "postfix"
+        if _looks_like_ssh_config(head):
+            return "ssh"
         return "ini"
 
     # Fallback: treat as INI-ish
