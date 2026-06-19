@@ -164,3 +164,68 @@ def test_yaml_indentless_sequence_loop_roundtrips_semantically(tmp_path: Path):
     assert yaml.safe_load(rendered) == yaml.safe_load(text)
     assert "      - waffleimage/ubuntu18.04" not in template
     assert "  vagrant:" not in template
+
+
+def test_yaml_loop_preserves_following_top_level_comments(tmp_path: Path):
+    from jinja2 import Template
+
+    from jinjaturtle.core import analyze_loops
+
+    text = textwrap.dedent(
+        """
+        Style/HashExcept:
+          Exclude:
+            - lib/puppet/provider/dsc_base_provider/dsc_base_provider.rb
+            - spec/unit/puppet/provider/dsc_base_provider/dsc_base_provider_spec.rb
+
+        # Offense count: 2
+        # This cop supports unsafe autocorrection (--autocorrect-all).
+        Style/MapIntoArray:
+          Exclude:
+            - lib/puppet/provider/dsc_base_provider/dsc_base_provider.rb
+        """
+    ).lstrip()
+    path = tmp_path / ".rubocop_todo.yml"
+    path.write_text(text, encoding="utf-8")
+
+    fmt, parsed = parse_config(path)
+    loop_candidates = analyze_loops(fmt, parsed)
+    flat_items = flatten_config(fmt, parsed, loop_candidates)
+    defaults = yaml.safe_load(
+        generate_ansible_yaml("role", flat_items, loop_candidates)
+    )
+    template = generate_jinja2_template(
+        fmt, parsed, "role", original_text=text, loop_candidates=loop_candidates
+    )
+    rendered = Template(template).render(**defaults)
+
+    assert "# Offense count: 2" in rendered
+    assert "# This cop supports unsafe autocorrection" in rendered
+    assert yaml.safe_load(rendered) == yaml.safe_load(text)
+
+
+def test_yaml_bool_scalars_render_with_yaml_spelling(tmp_path: Path):
+    from jinja2 import Template
+
+    text = textwrap.dedent(
+        """
+        AllCops:
+          SuggestExtensions: false
+        Style/ClassAndModuleChildren:
+          Enabled: false
+        """
+    ).lstrip()
+    path = tmp_path / ".rubocop.yml"
+    path.write_text(text, encoding="utf-8")
+
+    fmt, parsed = parse_config(path)
+    flat_items = flatten_config(fmt, parsed)
+    defaults = yaml.safe_load(generate_ansible_yaml("role", flat_items))
+    template = generate_jinja2_template(fmt, parsed, "role", original_text=text)
+    rendered = Template(template).render(**defaults)
+
+    assert "SuggestExtensions: false" in rendered
+    assert "Enabled: false" in rendered
+    assert "SuggestExtensions: False" not in rendered
+    assert "Enabled: False" not in rendered
+    assert yaml.safe_load(rendered) == yaml.safe_load(text)

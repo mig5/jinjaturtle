@@ -1,3 +1,9 @@
+jinjaturtle (0.5.3) unstable; urgency=medium
+
+  * Fix loss of comments and True/False to true/false
+
+ -- Miguel Jacq <mig@mig5.net>  Fri, 19 Jun 2026 18:43:00 +1000
+
 jinjaturtle (0.5.2) unstable; urgency=medium
 
   * Fix indentation problems with nested dicts

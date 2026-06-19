@@ -59,6 +59,28 @@ class YamlHandler(DictLikeHandler):
             role_prefix, dumped, loop_candidates, loop_paths
         )
 
+    def _yaml_scalar_expr(self, var_name: str, raw_value: str | None = None) -> str:
+        """Return a Jinja expression that preserves YAML scalar spelling.
+
+        Plain ``{{ var }}`` renders Python booleans as ``True``/``False``.
+        YAML config files conventionally use ``true``/``false`` and some
+        consumers are stricter than PyYAML, so emit explicit YAML spelling for
+        values that were originally YAML booleans/nulls.
+        """
+        raw = (raw_value or "").strip().lower()
+        if raw in {"true", "false"}:
+            return f"{{{{ 'true' if {var_name} else 'false' }}}}"
+        if raw in {"null", "~"}:
+            return f"{{{{ 'null' if {var_name} is none else {var_name} }}}}"
+        return f"{{{{ {var_name} }}}}"
+
+    def _yaml_value_expr(self, value_expr: str, sample_value: Any | None = None) -> str:
+        if isinstance(sample_value, bool):
+            return f"{{{{ 'true' if {value_expr} else 'false' }}}}"
+        if sample_value is None:
+            return f"{{{{ 'null' if {value_expr} is none else {value_expr} }}}}"
+        return f"{{{{ {value_expr} }}}}"
+
     def _generate_yaml_template_from_text(
         self,
         role_prefix: str,
@@ -121,7 +143,7 @@ class YamlHandler(DictLikeHandler):
                     q = raw_value[0]
                     replacement = f"{q}{{{{ {var_name} }}}}{q}"
                 else:
-                    replacement = f"{{{{ {var_name} }}}}"
+                    replacement = self._yaml_scalar_expr(var_name, raw_value)
 
                 leading = rest[: len(rest) - len(rest.lstrip(" \t"))]
                 new_rest = f"{leading}{replacement}{comment_part}"
@@ -160,7 +182,7 @@ class YamlHandler(DictLikeHandler):
                     q = raw_value[0]
                     replacement = f"{q}{{{{ {var_name} }}}}{q}"
                 else:
-                    replacement = f"{{{{ {var_name} }}}}"
+                    replacement = self._yaml_scalar_expr(var_name, raw_value)
 
                 new_stripped = f"- {replacement}{comment_part}"
                 out_lines.append(
@@ -220,6 +242,12 @@ class YamlHandler(DictLikeHandler):
             # or when indentation moves above the parent collection.
             if skip_until_indent is not None:
                 if not stripped or stripped.startswith("#"):
+                    if indent <= skip_until_indent:
+                        skip_until_indent = None
+                        out_lines.append(raw_line)
+                    # Comments/blank lines indented beneath the replaced
+                    # collection are considered part of that collection and
+                    # cannot be placed safely inside a generated loop.
                     continue
                 if indent < skip_until_indent or (
                     indent == skip_until_indent and not stripped.startswith("- ")
@@ -288,7 +316,7 @@ class YamlHandler(DictLikeHandler):
                     q = raw_value[0]
                     replacement = f"{q}{{{{ {var_name} }}}}{q}"
                 else:
-                    replacement = f"{{{{ {var_name} }}}}"
+                    replacement = self._yaml_scalar_expr(var_name, raw_value)
 
                 leading = rest[: len(rest) - len(rest.lstrip(" \t"))]
                 new_rest = f"{leading}{replacement}{comment_part}"
@@ -345,7 +373,7 @@ class YamlHandler(DictLikeHandler):
                     q = raw_value[0]
                     replacement = f"{q}{{{{ {var_name} }}}}{q}"
                 else:
-                    replacement = f"{{{{ {var_name} }}}}"
+                    replacement = self._yaml_scalar_expr(var_name, raw_value)
 
                 new_stripped = f"- {replacement}{comment_part}"
                 out_lines.append(
@@ -395,7 +423,9 @@ class YamlHandler(DictLikeHandler):
             item_indent_str = " " * item_indent
 
             if candidate.item_schema == "scalar":
-                item_lines.append(f"{item_indent_str}- {{{{ {item_var} }}}}")
+                item_lines.append(
+                    f"{item_indent_str}- {self._yaml_value_expr(item_var, sample_item)}"
+                )
             elif candidate.item_schema in ("simple_dict", "nested"):
                 item_lines = self._dict_to_yaml_lines(
                     sample_item, item_var, item_indent, is_list_item=True
@@ -447,11 +477,13 @@ class YamlHandler(DictLikeHandler):
 
             if first_key and is_list_item:
                 # First key gets the list marker
-                lines.append(f"{indent_str}- {key}: {{{{ {loop_var}.{key} }}}}")
+                value_expr = self._yaml_value_expr(f"{loop_var}.{key}", value)
+                lines.append(f"{indent_str}- {key}: {value_expr}")
                 first_key = False
             else:
                 # Subsequent keys are indented
                 sub_indent = indent + 2 if is_list_item else indent
-                lines.append(f"{' ' * sub_indent}{key}: {{{{ {loop_var}.{key} }}}}")
+                value_expr = self._yaml_value_expr(f"{loop_var}.{key}", value)
+                lines.append(f"{' ' * sub_indent}{key}: {value_expr}")
 
         return lines
