@@ -1,3 +1,9 @@
+jinjaturtle (0.5.1) unstable; urgency=medium
+
+  * Empty dicts and lists are now emitted as leaf defaults.
+
+ -- Miguel Jacq <mig@mig5.net>  Fri, 19 Jun 2026 17:43:00 +1000
+
 jinjaturtle (0.5.0) unstable; urgency=medium
 
   * Support ssh configs

@@ -1,4 +1,4 @@
-%global upstream_version 0.5.0
+%global upstream_version 0.5.1
 
 Name:           jinjaturtle
 Version:        %{upstream_version}
@@ -42,6 +42,8 @@ Convert config files into Ansible defaults and Jinja2 templates.
 %{_bindir}/jinjaturtle
 
 %changelog
+* Fri Jun 19 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
+- Empty dicts and lists are now emitted as leaf defaults.
 * Tue May 11 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
 - Support ssh configs
 * Tue Jan 06 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
