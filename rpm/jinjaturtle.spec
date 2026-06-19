@@ -1,4 +1,4 @@
-%global upstream_version 0.5.1
+%global upstream_version 0.5.2
 
 Name:           jinjaturtle
 Version:        %{upstream_version}
@@ -42,6 +42,8 @@ Convert config files into Ansible defaults and Jinja2 templates.
 %{_bindir}/jinjaturtle
 
 %changelog
+* Fri Jun 19 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
+- Fix indentation problems with nested dicts
 * Fri Jun 19 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
 - Empty dicts and lists are now emitted as leaf defaults.
 * Tue May 11 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}

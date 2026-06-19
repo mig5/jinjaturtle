@@ -119,3 +119,48 @@ def test_yaml_empty_collection_defaults_match_template_vars(tmp_path: Path):
     )
     assert "{{ role_ignore }}" in template
     assert "{{ role_settings }}" in template
+
+
+def test_yaml_indentless_sequence_loop_roundtrips_semantically(tmp_path: Path):
+    """Indentless YAML sequences under a mapping key must be fully replaced.
+
+    A previous loop renderer emitted a loop at ``images:`` but then processed
+    the original ``- item`` lines again because they had the same indentation
+    as the parent key. That duplicated values and nested following top-level
+    keys incorrectly.
+    """
+    from jinja2 import Template
+
+    from jinjaturtle.core import analyze_loops
+
+    text = textwrap.dedent(
+        """
+        default:
+          provisioner: docker
+          images:
+          - waffleimage/ubuntu18.04
+          - waffleimage/centos7
+        vagrant:
+          provisioner: vagrant
+          images:
+          - centos/7
+          - generic/ubuntu1804
+        """
+    ).lstrip()
+    path = tmp_path / "provision.yaml"
+    path.write_text(text, encoding="utf-8")
+
+    fmt, parsed = parse_config(path)
+    loop_candidates = analyze_loops(fmt, parsed)
+    flat_items = flatten_config(fmt, parsed, loop_candidates)
+    defaults = yaml.safe_load(
+        generate_ansible_yaml("role", flat_items, loop_candidates)
+    )
+    template = generate_jinja2_template(
+        fmt, parsed, "role", original_text=text, loop_candidates=loop_candidates
+    )
+    rendered = Template(template).render(**defaults)
+
+    assert yaml.safe_load(rendered) == yaml.safe_load(text)
+    assert "      - waffleimage/ubuntu18.04" not in template
+    assert "  vagrant:" not in template

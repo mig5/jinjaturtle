@@ -208,12 +208,21 @@ class YamlHandler(DictLikeHandler):
             stripped = raw_line.lstrip()
             indent = len(raw_line) - len(stripped)
 
-            # If we're skipping lines (inside a loop section), check if we can stop
+            # If we're skipping lines inside a collection replaced by a loop,
+            # continue through YAML's indentless sequence style too, where list
+            # items can appear at the same indentation as the parent key:
+            #
+            #   images:
+            #   - ubuntu
+            #   - debian
+            #
+            # Stop only when a non-list item at the parent indentation appears,
+            # or when indentation moves above the parent collection.
             if skip_until_indent is not None:
-                if (
-                    indent <= skip_until_indent
-                    and stripped
-                    and not stripped.startswith("#")
+                if not stripped or stripped.startswith("#"):
+                    continue
+                if indent < skip_until_indent or (
+                    indent == skip_until_indent and not stripped.startswith("- ")
                 ):
                     skip_until_indent = None
                 else:
@@ -374,39 +383,36 @@ class YamlHandler(DictLikeHandler):
         collection_var = self.make_var_name(role_prefix, candidate.path)
         item_var = candidate.loop_var
 
-        lines = []
-
+        lines: list[str] = []
         if not is_list:
-            # Dict-style: key: {% for ... %}
             key = candidate.path[-1] if candidate.path else "items"
             lines.append(f"{indent_str}{key}:")
-            lines.append(f"{indent_str}  {{% for {item_var} in {collection_var} -%}}")
-        else:
-            # List-style: just the loop
-            lines.append(f"{indent_str}{{% for {item_var} in {collection_var} -%}}")
 
-        # Generate template for item structure
+        item_lines: list[str] = []
         if candidate.items:
             sample_item = candidate.items[0]
             item_indent = indent + 2 if not is_list else indent
+            item_indent_str = " " * item_indent
 
             if candidate.item_schema == "scalar":
-                # Simple list of scalars
-                if is_list:
-                    lines.append(f"{indent_str}- {{{{ {item_var} }}}}")
-                else:
-                    lines.append(f"{indent_str}  - {{{{ {item_var} }}}}")
-
+                item_lines.append(f"{item_indent_str}- {{{{ {item_var} }}}}")
             elif candidate.item_schema in ("simple_dict", "nested"):
-                # List of dicts or complex items - these are ALWAYS list items in YAML
                 item_lines = self._dict_to_yaml_lines(
                     sample_item, item_var, item_indent, is_list_item=True
                 )
-                lines.extend(item_lines)
 
-        # Close loop
-        close_indent = indent + 2 if not is_list else indent
-        lines.append(f"{' ' * close_indent}{{% endfor %}}")
+        if item_lines:
+            # Put the first YAML item on the same physical line as the Jinja
+            # ``for`` tag. With default Jinja whitespace settings this avoids
+            # rendering a blank line after the parent key. Keeping the control
+            # tag itself at column zero prevents its indentation from leaking
+            # into the rendered YAML and nesting the next top-level key.
+            lines.append(f"{{% for {item_var} in {collection_var} %}}{item_lines[0]}")
+            lines.extend(item_lines[1:])
+            lines.append("{% endfor %}")
+        else:
+            lines.append(f"{{% for {item_var} in {collection_var} %}}")
+            lines.append("{% endfor %}")
 
         return "\n".join(lines) + "\n"
 

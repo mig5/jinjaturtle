@@ -1,3 +1,9 @@
+jinjaturtle (0.5.2) unstable; urgency=medium
+
+  * Fix indentation problems with nested dicts
+
+ -- Miguel Jacq <mig@mig5.net>  Fri, 19 Jun 2026 18:33:00 +1000
+
 jinjaturtle (0.5.1) unstable; urgency=medium
 
   * Empty dicts and lists are now emitted as leaf defaults.
