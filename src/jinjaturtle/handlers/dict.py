@@ -19,9 +19,15 @@ class DictLikeHandler(BaseHandler):
 
         def _walk(obj: Any, path: tuple[str, ...] = ()) -> None:
             if isinstance(obj, dict):
+                if not obj:
+                    items.append((path, obj))
+                    return
                 for k, v in obj.items():
                     _walk(v, path + (str(k),))
             elif isinstance(obj, list) and self.flatten_lists:
+                if not obj:
+                    items.append((path, obj))
+                    return
                 for i, v in enumerate(obj):
                     _walk(v, path + (str(i),))
             else:

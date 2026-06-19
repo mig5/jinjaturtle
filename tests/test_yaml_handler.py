@@ -100,3 +100,22 @@ def test_generate_jinja2_template_yaml_structural_fallback():
     # We don't care about exact formatting, just that the expected variable
     # name shows up, proving we went through the structural path.
     assert "role_outer_inner" in tmpl
+
+
+def test_yaml_empty_collection_defaults_match_template_vars(tmp_path: Path):
+    yaml_path = tmp_path / "pdk.yaml"
+    yaml_path.write_text("ignore: []\nsettings: {}\n", encoding="utf-8")
+
+    fmt, parsed = parse_config(yaml_path)
+    flat_items = flatten_config(fmt, parsed)
+    ansible_yaml = generate_ansible_yaml("role", flat_items)
+    defaults = yaml.safe_load(ansible_yaml)
+
+    assert defaults["role_ignore"] == []
+    assert defaults["role_settings"] == {}
+
+    template = generate_jinja2_template(
+        fmt, parsed, "role", original_text=yaml_path.read_text(encoding="utf-8")
+    )
+    assert "{{ role_ignore }}" in template
+    assert "{{ role_settings }}" in template
