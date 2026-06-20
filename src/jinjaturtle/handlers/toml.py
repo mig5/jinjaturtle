@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from . import DictLikeHandler
+from .. import j2
 from ..loop_analyzer import LoopCandidate
 
 try:
@@ -15,6 +16,14 @@ except Exception:
 class TomlHandler(DictLikeHandler):
     fmt = "toml"
     flatten_lists = False  # keep lists as scalars
+
+    def _toml_value_expr(self, var_name: str, value: Any | None = None) -> str:
+        if isinstance(value, bool):
+            return j2.lower(var_name)
+        return j2.variable(var_name)
+
+    def _toml_quoted_expr(self, var_name: str, quote: str = '"') -> str:
+        return j2.quoted_variable(var_name, quote)
 
     def parse(self, path: Path) -> Any:
         if tomllib is None:
@@ -68,12 +77,12 @@ class TomlHandler(DictLikeHandler):
         def emit_kv(path: tuple[str, ...], key: str, value: Any) -> None:
             var_name = self.make_var_name(role_prefix, path + (key,))
             if isinstance(value, str):
-                lines.append(f'{key} = "{{{{ {var_name} }}}}"')
+                lines.append(f"{key} = {self._toml_quoted_expr(var_name)}")
             elif isinstance(value, bool):
                 # Booleans need | lower filter (Python True/False → TOML true/false)
-                lines.append(f"{key} = {{{{ {var_name} | lower }}}}")
+                lines.append(f"{key} = {self._toml_value_expr(var_name, value)}")
             else:
-                lines.append(f"{key} = {{{{ {var_name} }}}}")
+                lines.append(f"{key} = {self._toml_value_expr(var_name, value)}")
 
         def walk(obj: dict[str, Any], path: tuple[str, ...] = ()) -> None:
             scalar_items = {k: v for k, v in obj.items() if not isinstance(v, dict)}
@@ -121,10 +130,10 @@ class TomlHandler(DictLikeHandler):
         def emit_kv(path: tuple[str, ...], key: str, value: Any) -> None:
             var_name = self.make_var_name(role_prefix, path + (key,))
             if isinstance(value, str):
-                lines.append(f'{key} = "{{{{ {var_name} }}}}"')
+                lines.append(f"{key} = {self._toml_quoted_expr(var_name)}")
             elif isinstance(value, bool):
                 # Booleans need | lower filter (Python True/False → TOML true/false)
-                lines.append(f"{key} = {{{{ {var_name} | lower }}}}")
+                lines.append(f"{key} = {self._toml_value_expr(var_name, value)}")
             elif isinstance(value, list):
                 # Check if this list is a loop candidate
                 if path + (key,) in loop_paths:
@@ -139,24 +148,21 @@ class TomlHandler(DictLikeHandler):
                         # Scalar list loop
                         lines.append(
                             f"{key} = ["
-                            f"{{% for {item_var} in {collection_var} %}}"
-                            f"{{{{ {item_var} }}}}"
-                            f"{{% if not loop.last %}}, {{% endif %}}"
-                            f"{{% endfor %}}"
+                            f"{j2.for_start(item_var, collection_var)}"
+                            f"{j2.variable(item_var)}"
+                            f"{j2.if_not_loop_last()}, {j2.endif()}"
+                            f"{j2.for_end()}"
                             f"]"
                         )
                     elif candidate.item_schema in ("simple_dict", "nested"):
                         # Dict list loop - TOML array of tables
                         # This is complex for TOML, using simplified approach
-                        lines.append(
-                            f"{key} = "
-                            f"{{{{ {var_name} | to_json(ensure_ascii=False) }}}}"
-                        )
+                        lines.append(f"{key} = " f"{j2.to_json(var_name)}")
                 else:
                     # Not a loop, treat as regular variable
-                    lines.append(f"{key} = {{{{ {var_name} }}}}")
+                    lines.append(f"{key} = {self._toml_value_expr(var_name, value)}")
             else:
-                lines.append(f"{key} = {{{{ {var_name} }}}}")
+                lines.append(f"{key} = {self._toml_value_expr(var_name, value)}")
 
         def walk(obj: dict[str, Any], path: tuple[str, ...] = ()) -> None:
             scalar_items = {k: v for k, v in obj.items() if not isinstance(v, dict)}
@@ -282,13 +288,17 @@ class TomlHandler(DictLikeHandler):
                         nested_path = path + (sub_key,)
                         nested_var = self.make_var_name(role_prefix, nested_path)
                         if isinstance(sub_val, str):
-                            inner_bits.append(f'{sub_key} = "{{{{ {nested_var} }}}}"')
+                            inner_bits.append(
+                                f"{sub_key} = {self._toml_quoted_expr(nested_var)}"
+                            )
                         elif isinstance(sub_val, bool):
                             inner_bits.append(
-                                f"{sub_key} = {{{{ {nested_var} | lower }}}}"
+                                f"{sub_key} = {self._toml_value_expr(nested_var, sub_val)}"
                             )
                         else:
-                            inner_bits.append(f"{sub_key} = {{{ {nested_var} }}}")
+                            inner_bits.append(
+                                f"{sub_key} = {self._toml_value_expr(nested_var, sub_val)}"
+                            )
                     replacement_value = "{ " + ", ".join(inner_bits) + " }"
                     new_content = (
                         before_eq + "=" + leading_ws + replacement_value + comment_part
@@ -310,11 +320,11 @@ class TomlHandler(DictLikeHandler):
 
             if use_quotes:
                 quote_char = raw_value[0]
-                replacement_value = f"{quote_char}{{{{ {var_name} }}}}{quote_char}"
+                replacement_value = self._toml_quoted_expr(var_name, quote_char)
             elif is_bool:
-                replacement_value = f"{{{{ {var_name} | lower }}}}"
+                replacement_value = j2.lower(var_name)
             else:
-                replacement_value = f"{{{{ {var_name} }}}}"
+                replacement_value = j2.variable(var_name)
 
             new_content = (
                 before_eq + "=" + leading_ws + replacement_value + comment_part
@@ -392,7 +402,7 @@ class TomlHandler(DictLikeHandler):
 
                             # Build loop
                             out_lines.append(
-                                f"{{% for {item_var} in {collection_var} %}}\n"
+                                f"{j2.for_start(item_var, collection_var)}\n"
                             )
                             out_lines.append(f"[[{'.'.join(table_path)}]]\n")
 
@@ -402,14 +412,21 @@ class TomlHandler(DictLikeHandler):
                                     continue
                                 if isinstance(value, str):
                                     out_lines.append(
-                                        f'{key} = "{{{{ {item_var}.{key} }}}}"\n'
+                                        f"{key} = "
+                                        f"{self._toml_quoted_expr(f'{item_var}.{key}')}\n"
+                                    )
+                                elif isinstance(value, bool):
+                                    out_lines.append(
+                                        f"{key} = "
+                                        f"{self._toml_value_expr(f'{item_var}.{key}', value)}\n"
                                     )
                                 else:
                                     out_lines.append(
-                                        f"{key} = {{{{ {item_var}.{key} }}}}\n"
+                                        f"{key} = "
+                                        f"{self._toml_value_expr(f'{item_var}.{key}', value)}\n"
                                     )
 
-                            out_lines.append("{% endfor %}\n")
+                            out_lines.append(f"{j2.for_end()}\n")
 
                         # Skip all content until the next different table
                         skip_until_next_table = True
@@ -473,17 +490,15 @@ class TomlHandler(DictLikeHandler):
                     # Scalar list loop
                     replacement_value = (
                         f"["
-                        f"{{% for {item_var} in {collection_var} %}}"
-                        f"{{{{ {item_var} }}}}"
-                        f"{{% if not loop.last %}}, {{% endif %}}"
-                        f"{{% endfor %}}"
+                        f"{j2.for_start(item_var, collection_var)}"
+                        f"{j2.variable(item_var)}"
+                        f"{j2.if_not_loop_last()}, {j2.endif()}"
+                        f"{j2.for_end()}"
                         f"]"
                     )
                 else:
                     # Dict/nested loop - use to_json filter for complex arrays
-                    replacement_value = (
-                        f"{{{{ {collection_var} | to_json(ensure_ascii=False) }}}}"
-                    )
+                    replacement_value = j2.to_json(collection_var)
 
                 new_content = (
                     before_eq + "=" + leading_ws + replacement_value + comment_part
@@ -510,13 +525,17 @@ class TomlHandler(DictLikeHandler):
                         nested_path = path + (sub_key,)
                         nested_var = self.make_var_name(role_prefix, nested_path)
                         if isinstance(sub_val, str):
-                            inner_bits.append(f'{sub_key} = "{{{{ {nested_var} }}}}"')
+                            inner_bits.append(
+                                f"{sub_key} = {self._toml_quoted_expr(nested_var)}"
+                            )
                         elif isinstance(sub_val, bool):
                             inner_bits.append(
-                                f"{sub_key} = {{{{ {nested_var} | lower }}}}"
+                                f"{sub_key} = {self._toml_value_expr(nested_var, sub_val)}"
                             )
                         else:
-                            inner_bits.append(f"{sub_key} = {{{{ {nested_var} }}}}")
+                            inner_bits.append(
+                                f"{sub_key} = {self._toml_value_expr(nested_var, sub_val)}"
+                            )
                     replacement_value = "{ " + ", ".join(inner_bits) + " }"
                     new_content = (
                         before_eq + "=" + leading_ws + replacement_value + comment_part
@@ -538,11 +557,11 @@ class TomlHandler(DictLikeHandler):
 
             if use_quotes:
                 quote_char = raw_value[0]
-                replacement_value = f"{quote_char}{{{{ {var_name} }}}}{quote_char}"
+                replacement_value = self._toml_quoted_expr(var_name, quote_char)
             elif is_bool:
-                replacement_value = f"{{{{ {var_name} | lower }}}}"
+                replacement_value = j2.lower(var_name)
             else:
-                replacement_value = f"{{{{ {var_name} }}}}"
+                replacement_value = j2.variable(var_name)
 
             new_content = (
                 before_eq + "=" + leading_ws + replacement_value + comment_part

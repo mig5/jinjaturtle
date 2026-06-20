@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from . import BaseHandler
+from .. import j2
 
 
 _SECTION_KEYWORDS = {"host", "match"}
@@ -265,9 +266,9 @@ class SshConfigHandler(BaseHandler):
             var = self.make_var_name(role_prefix, path)
             if ln.quoted and ln.value:
                 quote_char = ln.value[0]
-                replacement_value = f"{quote_char}{{{{ {var} }}}}{quote_char}"
+                replacement_value = j2.quoted_variable(var, quote_char)
             else:
-                replacement_value = f"{{{{ {var} }}}}"
+                replacement_value = j2.variable(var)
 
             rendered = (
                 f"{ln.before_value}{replacement_value}"

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from . import BaseHandler
+from .. import j2
 
 
 class PostfixMainHandler(BaseHandler):
@@ -92,7 +93,7 @@ class PostfixMainHandler(BaseHandler):
             lines: list[str] = []
             for k, v in parsed.items():
                 var = self.make_var_name(role_prefix, (k,))
-                lines.append(f"{k} = {{{{ {var} }}}}")
+                lines.append(f"{k} = {j2.variable(var)}")
             return "\n".join(lines).rstrip() + "\n"
         return self._generate_from_text(role_prefix, original_text)
 
@@ -164,11 +165,13 @@ class PostfixMainHandler(BaseHandler):
             quoted = len(v) >= 2 and v[0] == v[-1] and v[0] in {'"', "'"}
             if quoted:
                 replacement = (
-                    f'{before_eq}={leading_ws}"{{{{ {var} }}}}"{comment_part}{newline}'
+                    f"{before_eq}={leading_ws}{j2.quoted_variable(var)}"
+                    f"{comment_part}{newline}"
                 )
             else:
                 replacement = (
-                    f"{before_eq}={leading_ws}{{{{ {var} }}}}{comment_part}{newline}"
+                    f"{before_eq}={leading_ws}{j2.variable(var)}"
+                    f"{comment_part}{newline}"
                 )
 
             out_lines.append(replacement)

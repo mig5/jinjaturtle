@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from . import DictLikeHandler
+from .. import j2
 from ..loop_analyzer import LoopCandidate
 
 
@@ -31,7 +32,7 @@ class JsonHandler(DictLikeHandler):
         return self._generate_json_template(role_prefix, parsed)
 
     JSON_INDENT = 2
-    JSON_VALUE_FILTER = "to_json(ensure_ascii=False)"
+    JSON_VALUE_FILTER = j2.JSON_VALUE_FILTER
 
     def _leading_indent(self, s: str, idx: int) -> int:
         """Return the number of leading spaces on the line containing idx."""
@@ -85,7 +86,7 @@ class JsonHandler(DictLikeHandler):
         useful in HTML, but noisy in configuration files. JinjaTurtle generates
         Ansible templates, so use Ansible's ``to_json`` filter instead.
         """
-        return f"{{{{ {var_name} | {self.JSON_VALUE_FILTER} }}}}"
+        return j2.filtered(var_name, self.JSON_VALUE_FILTER)
 
     def _generate_json_template_from_text(self, role_prefix: str, text: str) -> str:
         """Replace JSON scalar values in-place, preserving original formatting.
@@ -330,10 +331,10 @@ class JsonHandler(DictLikeHandler):
         # a blank line between iterations under default Jinja whitespace settings.
         return (
             f"[\n"
-            f"{{% for {item_var} in {collection_var} %}}"
-            f"{inner}{{{{ {item_var} | to_json(ensure_ascii=False) }}}}"
-            f"{{% if not loop.last %}},{{% endif %}}\n"
-            f"{{% endfor %}}{base}]"
+            f"{j2.for_start(item_var, collection_var)}"
+            f"{inner}{j2.to_json(item_var)}"
+            f"{j2.if_not_loop_last()},{j2.endif()}\n"
+            f"{j2.for_end()}{base}]"
         )
 
     def _generate_json_dict_loop(
@@ -364,16 +365,15 @@ class JsonHandler(DictLikeHandler):
         for i, key in enumerate(keys):
             comma = "," if i < len(keys) - 1 else ""
             dict_lines.append(
-                f'{field}"{key}": '
-                f"{{{{ {item_var}.{key} | to_json(ensure_ascii=False) }}}}{comma}"
+                f'{field}"{key}": ' f"{j2.to_json(f'{item_var}.{key}')}{comma}"
             )
         # Comma between *items* goes after the closing brace.
-        dict_lines.append(f"{inner}}}{{% if not loop.last %}},{{% endif %}}")
+        dict_lines.append(f"{inner}}}{j2.if_not_loop_last()},{j2.endif()}")
         dict_body = "\n".join(dict_lines)
 
         # Put the `{% for %}` at the start of the first item line to avoid blank lines.
         return (
             f"[\n"
-            f"{{% for {item_var} in {collection_var} %}}{inner}{dict_body}\n"
-            f"{{% endfor %}}{base}]"
+            f"{j2.for_start(item_var, collection_var)}{inner}{dict_body}\n"
+            f"{j2.for_end()}{base}]"
         )

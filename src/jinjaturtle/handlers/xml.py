@@ -6,6 +6,7 @@ from typing import Any
 import xml.etree.ElementTree as ET  # nosec
 
 from .base import BaseHandler
+from .. import j2
 from ..loop_analyzer import LoopCandidate
 
 
@@ -172,7 +173,7 @@ class XmlHandler(BaseHandler):
             for attr_name in list(elem.attrib.keys()):
                 attr_path = path + (f"@{attr_name}",)
                 var_name = self.make_var_name(role_prefix, attr_path)
-                elem.set(attr_name, f"{{{{ {var_name} }}}}")
+                elem.set(attr_name, j2.variable(var_name))
 
             # Children
             children = [c for c in list(elem) if isinstance(c.tag, str)]
@@ -185,7 +186,7 @@ class XmlHandler(BaseHandler):
                 else:
                     text_path = path + ("value",)
                 var_name = self.make_var_name(role_prefix, text_path)
-                elem.text = f"{{{{ {var_name} }}}}"
+                elem.text = j2.variable(var_name)
 
             # Handle children - check for loops first
             counts = Counter(child.tag for child in children)
@@ -339,12 +340,12 @@ class XmlHandler(BaseHandler):
 
                         # Build loop
                         result_lines.append(
-                            f"{indent_str}{{% for {item_var} in {collection_var} %}}"
+                            f"{indent_str}{j2.for_start(item_var, collection_var)}"
                         )
                         # Add each line of the sample with proper indentation
                         for sample_line in sample_lines:
                             result_lines.append(f"{indent_str}  {sample_line}")
-                        result_lines.append(f"{indent_str}{{% endfor %}}")
+                        result_lines.append(f"{indent_str}{j2.for_end()}")
                 else:
                     # Keep the marker if we can't find the candidate
                     result_lines.append(line)
@@ -360,11 +361,11 @@ class XmlHandler(BaseHandler):
                 end = line.find("-->", start)
                 condition = line[start:end]
                 indent = len(line) - len(line.lstrip())
-                final_lines.append(f"{' ' * indent}{{% if {condition} is defined %}}")
+                final_lines.append(f"{' ' * indent}{j2.if_defined(condition)}")
             # Replace <!--ENDIF:field--> with {% endif %}
             elif "<!--ENDIF:" in line:
                 indent = len(line) - len(line.lstrip())
-                final_lines.append(f"{' ' * indent}{{% endif %}}")
+                final_lines.append(f"{' ' * indent}{j2.endif()}")
             else:
                 final_lines.append(line)
 
@@ -416,13 +417,13 @@ class XmlHandler(BaseHandler):
                 # Attribute - these come from element attributes
                 attr_name = key[1:]  # Remove @ prefix
                 # Use simple variable reference - attributes should always exist
-                elem.set(attr_name, f"{{{{ {loop_var}.{attr_name} }}}}")
+                elem.set(attr_name, j2.variable(f"{loop_var}.{attr_name}"))
             elif key == "_text":
                 # Simple text content - use ._text accessor for dict-based items
-                elem.text = f"{{{{ {loop_var}._text }}}}"
+                elem.text = j2.variable(f"{loop_var}._text")
             elif key == "value":
                 # Text with attributes/children
-                elem.text = f"{{{{ {loop_var}.value }}}}"
+                elem.text = j2.variable(f"{loop_var}.value")
             elif key == "_key":
                 # This is the dict key (for dict collections), skip in XML
                 pass
@@ -431,13 +432,13 @@ class XmlHandler(BaseHandler):
                 # Create a conditional wrapper comment
                 child = ET.Element(key)
                 if "_text" in value:
-                    child.text = f"{{{{ {loop_var}.{key}._text }}}}"
+                    child.text = j2.variable(f"{loop_var}.{key}._text")
                 else:
                     # More complex nested structure
                     for sub_key, sub_val in value.items():
                         if not sub_key.startswith("_"):
                             grandchild = ET.SubElement(child, sub_key)
-                            grandchild.text = f"{{{{ {loop_var}.{key}.{sub_key} }}}}"
+                            grandchild.text = j2.variable(f"{loop_var}.{key}.{sub_key}")
 
                 # Wrap the child in a Jinja if statement (will be done via text replacement)
                 # For now, add a marker comment before the element
@@ -452,7 +453,7 @@ class XmlHandler(BaseHandler):
                 marker = ET.Comment(f"IF:{loop_var}.{key}")
                 elem.append(marker)
                 child = ET.SubElement(elem, key)
-                child.text = f"{{{{ {loop_var}.{key} }}}}"
+                child.text = j2.variable(f"{loop_var}.{key}")
                 end_marker = ET.Comment(f"ENDIF:{key}")
                 elem.append(end_marker)
 

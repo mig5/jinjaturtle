@@ -8,6 +8,7 @@ import re
 import yaml
 
 from .loop_analyzer import LoopAnalyzer, LoopCandidate
+from .erb import puppet_class_name, puppet_local_var_name, translate_jinja2_to_erb
 from .handlers import (
     BaseHandler,
     IniHandler,
@@ -384,6 +385,85 @@ def generate_jinja2_template(
     # Fallback to original scalar-only generation
     return handler.generate_jinja2_template(
         parsed, role_prefix, original_text=original_text
+    )
+
+
+def _template_variable_names(
+    role_prefix: str,
+    flat_items: list[tuple[tuple[str, ...], Any]],
+    loop_candidates: list[LoopCandidate] | None = None,
+) -> set[str]:
+    names = {make_var_name(role_prefix, path) for path, _value in flat_items}
+    if loop_candidates:
+        for candidate in loop_candidates:
+            names.add(make_var_name(role_prefix, candidate.path))
+    return names
+
+
+def generate_puppet_hiera_yaml(
+    role_prefix: str,
+    flat_items: list[tuple[tuple[str, ...], Any]],
+    loop_candidates: list[LoopCandidate] | None = None,
+    *,
+    puppet_class: str | None = None,
+) -> str:
+    """Create Puppet Hiera data suitable for Automatic Parameter Lookup.
+
+    ``role_prefix`` remains the source variable prefix used by JinjaTurtle while
+    ``puppet_class`` is the Puppet class/Hiera namespace.  In the normal case
+    they are the same, so ``php_memory_limit`` becomes ``php::memory_limit``.
+    Enroll may pass a file-specific role prefix and a separate Puppet class to
+    avoid parameter-name collisions inside one generated Puppet module.
+    """
+
+    klass = puppet_class_name(puppet_class or role_prefix)
+    data: dict[str, Any] = {}
+
+    for path, value in flat_items:
+        generated = make_var_name(role_prefix, path)
+        local = puppet_local_var_name(role_prefix, generated, puppet_class=klass)
+        data[f"{klass}::{local}"] = value
+
+    if loop_candidates:
+        for candidate in loop_candidates:
+            generated = make_var_name(role_prefix, candidate.path)
+            local = puppet_local_var_name(role_prefix, generated, puppet_class=klass)
+            data[f"{klass}::{local}"] = candidate.items
+
+    return dump_yaml(data, sort_keys=True)
+
+
+def generate_erb_template(
+    fmt: str,
+    parsed: Any,
+    role_prefix: str,
+    *,
+    original_text: str | None = None,
+    loop_candidates: list[LoopCandidate] | None = None,
+    flat_items: list[tuple[tuple[str, ...], Any]] | None = None,
+    puppet_class: str | None = None,
+) -> str:
+    """Generate a Puppet ERB template from JinjaTurtle's renderer-neutral data.
+
+    The first implementation intentionally translates the Jinja2 subset emitted
+    by JinjaTurtle's existing format handlers.  This keeps parsing, formatting
+    preservation, and loop detection identical between Jinja2 and ERB output
+    while still producing Puppet-native ``@parameter`` references.
+    """
+
+    jinja_template = generate_jinja2_template(
+        fmt,
+        parsed,
+        role_prefix,
+        original_text=original_text,
+        loop_candidates=loop_candidates,
+    )
+    names = _template_variable_names(role_prefix, flat_items or [], loop_candidates)
+    return translate_jinja2_to_erb(
+        jinja_template,
+        role_prefix=role_prefix,
+        puppet_class=puppet_class or role_prefix,
+        variable_names=names,
     )
 
 

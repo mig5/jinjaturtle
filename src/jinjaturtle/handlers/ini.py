@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from . import BaseHandler
+from .. import j2
 
 
 class IniHandler(BaseHandler):
@@ -63,9 +64,9 @@ class IniHandler(BaseHandler):
                 var_name = self.make_var_name(role_prefix, path)
                 value = value.strip()
                 if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-                    lines.append(f'{key} = "{{{{ {var_name} }}}}"')
+                    lines.append(f"{key} = {j2.quoted_variable(var_name)}")
                 else:
-                    lines.append(f"{key} = {{{{ {var_name} }}}}")
+                    lines.append(f"{key} = {j2.variable(var_name)}")
             lines.append("")
 
         return "\n".join(lines).rstrip() + "\n"
@@ -141,9 +142,9 @@ class IniHandler(BaseHandler):
 
             if use_quotes:
                 quote_char = raw_value[0]
-                replacement_value = f"{quote_char}{{{{ {var_name} }}}}{quote_char}"
+                replacement_value = j2.quoted_variable(var_name, quote_char)
             else:
-                replacement_value = f"{{{{ {var_name} }}}}"
+                replacement_value = j2.variable(var_name)
 
             new_content = (
                 before_eq + "=" + leading_ws + replacement_value + comment_part

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from . import BaseHandler
+from .. import j2
 
 
 @dataclass
@@ -167,9 +168,15 @@ class SystemdUnitHandler(BaseHandler):
             v = (ln.value or "").strip()
             quoted = len(v) >= 2 and v[0] == v[-1] and v[0] in {'"', "'"}
             if quoted:
-                repl = f'{ln.before_eq}={ln.leading_ws_after_eq}"{{{{ {var} }}}}"{ln.comment}'
+                repl = (
+                    f"{ln.before_eq}={ln.leading_ws_after_eq}"
+                    f"{j2.quoted_variable(var)}{ln.comment}"
+                )
             else:
-                repl = f"{ln.before_eq}={ln.leading_ws_after_eq}{{{{ {var} }}}}{ln.comment}"
+                repl = (
+                    f"{ln.before_eq}={ln.leading_ws_after_eq}"
+                    f"{j2.variable(var)}{ln.comment}"
+                )
 
             newline = "\n" if ln.raw.endswith("\n") else ""
             out_lines.append(repl + newline)

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .dict import DictLikeHandler
+from .. import j2
 from ..loop_analyzer import LoopCandidate
 
 
@@ -67,19 +68,10 @@ class YamlHandler(DictLikeHandler):
         consumers are stricter than PyYAML, so emit explicit YAML spelling for
         values that were originally YAML booleans/nulls.
         """
-        raw = (raw_value or "").strip().lower()
-        if raw in {"true", "false"}:
-            return f"{{{{ 'true' if {var_name} else 'false' }}}}"
-        if raw in {"null", "~"}:
-            return f"{{{{ 'null' if {var_name} is none else {var_name} }}}}"
-        return f"{{{{ {var_name} }}}}"
+        return j2.yaml_scalar_expression(var_name, raw_value)
 
     def _yaml_value_expr(self, value_expr: str, sample_value: Any | None = None) -> str:
-        if isinstance(sample_value, bool):
-            return f"{{{{ 'true' if {value_expr} else 'false' }}}}"
-        if sample_value is None:
-            return f"{{{{ 'null' if {value_expr} is none else {value_expr} }}}}"
-        return f"{{{{ {value_expr} }}}}"
+        return j2.yaml_value_expression(value_expr, sample_value)
 
     def _surrounding_quote(self, raw_value: str) -> str | None:
         if (
@@ -150,7 +142,7 @@ class YamlHandler(DictLikeHandler):
 
                 if use_quotes:
                     q = raw_value[0]
-                    replacement = f"{q}{{{{ {var_name} }}}}{q}"
+                    replacement = j2.quoted_variable(var_name, q)
                 else:
                     replacement = self._yaml_scalar_expr(var_name, raw_value)
 
@@ -189,7 +181,7 @@ class YamlHandler(DictLikeHandler):
 
                 if use_quotes:
                     q = raw_value[0]
-                    replacement = f"{q}{{{{ {var_name} }}}}{q}"
+                    replacement = j2.quoted_variable(var_name, q)
                 else:
                     replacement = self._yaml_scalar_expr(var_name, raw_value)
 
@@ -348,7 +340,7 @@ class YamlHandler(DictLikeHandler):
 
                 if use_quotes:
                     q = raw_value[0]
-                    replacement = f"{q}{{{{ {var_name} }}}}{q}"
+                    replacement = j2.quoted_variable(var_name, q)
                 else:
                     replacement = self._yaml_scalar_expr(var_name, raw_value)
 
@@ -412,7 +404,7 @@ class YamlHandler(DictLikeHandler):
 
                 if use_quotes:
                     q = raw_value[0]
-                    replacement = f"{q}{{{{ {var_name} }}}}{q}"
+                    replacement = j2.quoted_variable(var_name, q)
                 else:
                     replacement = self._yaml_scalar_expr(var_name, raw_value)
 
@@ -467,7 +459,7 @@ class YamlHandler(DictLikeHandler):
             if candidate.item_schema == "scalar":
                 value_expr = self._yaml_value_expr(item_var, sample_item)
                 if scalar_quote and isinstance(sample_item, str):
-                    value_expr = f"{scalar_quote}{{{{ {item_var} }}}}{scalar_quote}"
+                    value_expr = j2.quoted_variable(item_var, scalar_quote)
                 item_lines.append(f"{item_indent_str}- {value_expr}")
             elif candidate.item_schema in ("simple_dict", "nested"):
                 item_lines = self._dict_to_yaml_lines(
@@ -480,12 +472,12 @@ class YamlHandler(DictLikeHandler):
             # rendering a blank line after the parent key. Keeping the control
             # tag itself at column zero prevents its indentation from leaking
             # into the rendered YAML and nesting the next top-level key.
-            lines.append(f"{{% for {item_var} in {collection_var} %}}{item_lines[0]}")
+            lines.append(f"{j2.for_start(item_var, collection_var)}{item_lines[0]}")
             lines.extend(item_lines[1:])
-            lines.append("{% endfor %}")
+            lines.append(j2.for_end())
         else:
-            lines.append(f"{{% for {item_var} in {collection_var} %}}")
-            lines.append("{% endfor %}")
+            lines.append(j2.for_start(item_var, collection_var))
+            lines.append(j2.for_end())
 
         return "\n".join(lines) + "\n"
 

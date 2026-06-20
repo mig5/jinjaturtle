@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Iterable
 import xml.etree.ElementTree as ET  # nosec
 
+from . import j2
 from .core import dump_yaml, flatten_config, make_var_name, parse_config
 from .handlers.xml import XmlHandler
 
@@ -140,8 +141,8 @@ def _yaml_scalar_placeholder(
 ) -> str:
     var = make_var_name(role_prefix, path)
     if isinstance(sample, str):
-        return f'"{{{{ {var} }}}}"'
-    return f"{{{{ {var} }}}}"
+        return j2.quoted_variable(var)
+    return j2.variable(var)
 
 
 def _yaml_render_union(
@@ -168,13 +169,13 @@ def _yaml_render_union(
             if _is_scalar(val) or val is None:
                 value = _yaml_scalar_placeholder(role_prefix, key_path, val)
                 if cond_var:
-                    lines.append(f"{ind}{{% if {cond_var} is defined %}}")
+                    lines.append(f"{ind}{j2.if_defined(cond_var)}")
                 lines.append(f"{ind}{key}: {value}")
                 if cond_var:
-                    lines.append(f"{ind}{{% endif %}}")
+                    lines.append(f"{ind}{j2.endif()}")
             else:
                 if cond_var:
-                    lines.append(f"{ind}{{% if {cond_var} is defined %}}")
+                    lines.append(f"{ind}{j2.if_defined(cond_var)}")
                 lines.append(f"{ind}{key}:")
                 lines.extend(
                     _yaml_render_union(
@@ -187,7 +188,7 @@ def _yaml_render_union(
                     )
                 )
                 if cond_var:
-                    lines.append(f"{ind}{{% endif %}}")
+                    lines.append(f"{ind}{j2.endif()}")
         return lines
 
     if isinstance(union_obj, list):
@@ -202,13 +203,13 @@ def _yaml_render_union(
             if _is_scalar(item) or item is None:
                 value = _yaml_scalar_placeholder(role_prefix, item_path, item)
                 if cond_var:
-                    lines.append(f"{ind}{{% if {cond_var} is defined %}}")
+                    lines.append(f"{ind}{j2.if_defined(cond_var)}")
                 lines.append(f"{ind}- {value}")
                 if cond_var:
-                    lines.append(f"{ind}{{% endif %}}")
+                    lines.append(f"{ind}{j2.endif()}")
             elif isinstance(item, dict):
                 if cond_var:
-                    lines.append(f"{ind}{{% if {cond_var} is defined %}}")
+                    lines.append(f"{ind}{j2.if_defined(cond_var)}")
                 # First line: list marker with first key if possible
                 first = True
                 for k, v in item.items():
@@ -222,22 +223,22 @@ def _yaml_render_union(
                         value = _yaml_scalar_placeholder(role_prefix, kp, v)
                         if first:
                             if k_cond:
-                                lines.append(f"{ind}{{% if {k_cond} is defined %}}")
+                                lines.append(f"{ind}{j2.if_defined(k_cond)}")
                             lines.append(f"{ind}- {k}: {value}")
                             if k_cond:
-                                lines.append(f"{ind}{{% endif %}}")
+                                lines.append(f"{ind}{j2.endif()}")
                             first = False
                         else:
                             if k_cond:
-                                lines.append(f"{ind}  {{% if {k_cond} is defined %}}")
+                                lines.append(f"{ind}  {j2.if_defined(k_cond)}")
                             lines.append(f"{ind}  {k}: {value}")
                             if k_cond:
-                                lines.append(f"{ind}  {{% endif %}}")
+                                lines.append(f"{ind}  {j2.endif()}")
                     else:
                         # nested
                         if first:
                             if k_cond:
-                                lines.append(f"{ind}{{% if {k_cond} is defined %}}")
+                                lines.append(f"{ind}{j2.if_defined(k_cond)}")
                             lines.append(f"{ind}- {k}:")
                             lines.extend(
                                 _yaml_render_union(
@@ -249,11 +250,11 @@ def _yaml_render_union(
                                 )
                             )
                             if k_cond:
-                                lines.append(f"{ind}{{% endif %}}")
+                                lines.append(f"{ind}{j2.endif()}")
                             first = False
                         else:
                             if k_cond:
-                                lines.append(f"{ind}  {{% if {k_cond} is defined %}}")
+                                lines.append(f"{ind}  {j2.if_defined(k_cond)}")
                             lines.append(f"{ind}  {k}:")
                             lines.extend(
                                 _yaml_render_union(
@@ -265,20 +266,20 @@ def _yaml_render_union(
                                 )
                             )
                             if k_cond:
-                                lines.append(f"{ind}  {{% endif %}}")
+                                lines.append(f"{ind}  {j2.endif()}")
                 if first:
                     # empty dict item
                     lines.append(f"{ind}- {{}}")
                 if cond_var:
-                    lines.append(f"{ind}{{% endif %}}")
+                    lines.append(f"{ind}{j2.endif()}")
             else:
                 # list of lists - emit as scalar-ish fallback
-                value = f"{{{{ {make_var_name(role_prefix, item_path)} }}}}"
+                value = j2.variable(make_var_name(role_prefix, item_path))
                 if cond_var:
-                    lines.append(f"{ind}{{% if {cond_var} is defined %}}")
+                    lines.append(f"{ind}{j2.if_defined(cond_var)}")
                 lines.append(f"{ind}- {value}")
                 if cond_var:
-                    lines.append(f"{ind}{{% endif %}}")
+                    lines.append(f"{ind}{j2.endif()}")
         return lines
 
     # scalar at root
@@ -306,15 +307,15 @@ def _toml_render_union(
             else None
         )
         if cond:
-            lines.append(f"{{% if {cond} is defined %}}")
+            lines.append(f"{j2.if_defined(cond)}")
         if isinstance(value, str):
-            lines.append(f'{key} = "{{{{ {var_name} }}}}"')
+            lines.append(f"{key} = {j2.quoted_variable(var_name)}")
         elif isinstance(value, bool):
-            lines.append(f"{key} = {{{{ {var_name} | lower }}}}")
+            lines.append(f"{key} = {j2.lower(var_name)}")
         else:
-            lines.append(f"{key} = {{{{ {var_name} }}}}")
+            lines.append(f"{key} = {j2.variable(var_name)}")
         if cond:
-            lines.append("{% endif %}")
+            lines.append(j2.endif())
 
     def walk(obj: dict[str, Any], path: tuple[str, ...]) -> None:
         if path:
@@ -324,7 +325,7 @@ def _toml_render_union(
                 else None
             )
             if cond:
-                lines.append(f"{{% if {cond} is defined %}}")
+                lines.append(f"{j2.if_defined(cond)}")
             lines.append(f"[{'.'.join(path)}]")
 
         scalar_items = {k: v for k, v in obj.items() if not isinstance(v, dict)}
@@ -340,7 +341,7 @@ def _toml_render_union(
             walk(v, path + (str(k),))
 
         if path and (path in optional_containers):
-            lines.append("{% endif %}")
+            lines.append(j2.endif())
             lines.append("")
 
     # root scalars
@@ -410,7 +411,7 @@ def _ini_render_union(
             else None
         )
         if sec_cond:
-            lines.append(f"{{% if {sec_cond} is defined %}}")
+            lines.append(f"{j2.if_defined(sec_cond)}")
         lines.append(f"[{section}]")
         for key, raw_val in union.items(section, raw=True):
             path = (section, key)
@@ -421,16 +422,16 @@ def _ini_render_union(
             v = (raw_val or "").strip()
             quoted = len(v) >= 2 and v[0] == v[-1] and v[0] in {'"', "'"}
             if key_cond:
-                lines.append(f"{{% if {key_cond} is defined %}}")
+                lines.append(f"{j2.if_defined(key_cond)}")
             if quoted:
-                lines.append(f'{key} = "{{{{ {var} }}}}"')
+                lines.append(f"{key} = {j2.quoted_variable(var)}")
             else:
-                lines.append(f"{key} = {{{{ {var} }}}}")
+                lines.append(f"{key} = {j2.variable(var)}")
             if key_cond:
-                lines.append("{% endif %}")
+                lines.append(j2.endif())
         lines.append("")
         if sec_cond:
-            lines.append("{% endif %}")
+            lines.append(j2.endif())
             lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -624,7 +625,7 @@ def process_directory(
                 if multiple_formats
                 else f"{role_prefix}_items"
             )
-            template = "{{ data | to_json(indent=2, ensure_ascii=False) }}\n"
+            template = f"{j2.to_json('data', indent=2)}\n"
             items: list[dict[str, Any]] = []
             for rid, parsed in zip(rel_ids, parsed_list):
                 items.append({"id": rid, "data": parsed})
