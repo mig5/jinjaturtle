@@ -1,3 +1,10 @@
+jinjaturtle (0.5.4) unstable; urgency=medium
+
+  * Make templates more faithful to the original file in terms of indentation, newlines, no deserialisation of things like < or >.
+  * More test coverage
+
+ -- Miguel Jacq <mig@mig5.net>  Sat, 20 Jun 2026 15:29:00 +1000
+
 jinjaturtle (0.5.3) unstable; urgency=medium
 
   * Fix loss of comments and True/False to true/false
