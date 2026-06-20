@@ -1,3 +1,9 @@
+jinjaturtle (0.5.5) unstable; urgency=medium
+
+  * erb support
+
+ -- Miguel Jacq <mig@mig5.net>  Sat, 20 Jun 2026 18:27:00 +1000
+
 jinjaturtle (0.5.4) unstable; urgency=medium
 
   * Make templates more faithful to the original file in terms of indentation, newlines, no deserialisation of things like < or >.

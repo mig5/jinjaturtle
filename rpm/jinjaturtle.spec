@@ -1,4 +1,4 @@
-%global upstream_version 0.5.4
+%global upstream_version 0.5.5
 
 Name:           jinjaturtle
 Version:        %{upstream_version}
@@ -42,6 +42,8 @@ Convert config files into Ansible defaults and Jinja2 templates.
 %{_bindir}/jinjaturtle
 
 %changelog
+* Sat Jun 20 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
+- erb support
 * Sat Jun 20 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
 - Make templates more faithful to the original file in terms of indentation, newlines, no deserialisation of things like < or >.
 - More test coverage
