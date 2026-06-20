@@ -227,24 +227,24 @@ class YamlHandler(DictLikeHandler):
         def current_path() -> tuple[str, ...]:
             return stack[-1][1] if stack else ()
 
-        def first_sequence_item_quote(
+        def first_sequence_item_style(
             start_index: int, parent_indent: int
-        ) -> str | None:
+        ) -> tuple[str | None, int | None]:
             for future_line in lines[start_index + 1 :]:
                 future_stripped = future_line.lstrip()
                 future_indent = len(future_line) - len(future_stripped)
                 if not future_stripped or future_stripped.startswith("#"):
                     continue
                 if future_indent < parent_indent:
-                    return None
+                    return None, None
                 if future_stripped.startswith("- "):
                     value_part, _comment_part = self._split_inline_comment(
                         future_stripped[2:], {"#"}
                     )
-                    return self._surrounding_quote(value_part.strip())
+                    return self._surrounding_quote(value_part.strip()), future_indent
                 if future_indent <= parent_indent:
-                    return None
-            return None
+                    return None, None
+            return None, None
 
         for line_index, raw_line in enumerate(lines):
             stripped = raw_line.lstrip()
@@ -307,13 +307,19 @@ class YamlHandler(DictLikeHandler):
                     # Find the matching candidate
                     candidate = next(c for c in loop_candidates if c.path == path)
 
-                    scalar_quote = None
-                    if candidate.item_schema == "scalar":
-                        scalar_quote = first_sequence_item_quote(line_index, indent)
+                    scalar_quote, item_indent = first_sequence_item_style(
+                        line_index, indent
+                    )
+                    if candidate.item_schema != "scalar":
+                        scalar_quote = None
 
                     # Generate loop
                     loop_str = self._generate_yaml_loop(
-                        candidate, role_prefix, indent, scalar_quote=scalar_quote
+                        candidate,
+                        role_prefix,
+                        indent,
+                        scalar_quote=scalar_quote,
+                        item_indent=item_indent,
                     )
                     out_lines.append(loop_str)
 
@@ -427,6 +433,7 @@ class YamlHandler(DictLikeHandler):
         indent: int,
         is_list: bool = False,
         scalar_quote: str | None = None,
+        item_indent: int | None = None,
     ) -> str:
         """
         Generate a Jinja2 for loop for a YAML collection.
@@ -453,8 +460,12 @@ class YamlHandler(DictLikeHandler):
         item_lines: list[str] = []
         if candidate.items:
             sample_item = candidate.items[0]
-            item_indent = indent + 2 if not is_list else indent
-            item_indent_str = " " * item_indent
+            effective_item_indent = (
+                item_indent if item_indent is not None else indent + 2
+            )
+            if is_list:
+                effective_item_indent = indent
+            item_indent_str = " " * effective_item_indent
 
             if candidate.item_schema == "scalar":
                 value_expr = self._yaml_value_expr(item_var, sample_item)

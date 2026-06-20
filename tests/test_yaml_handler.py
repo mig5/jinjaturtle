@@ -163,7 +163,9 @@ def test_yaml_indentless_sequence_loop_roundtrips_semantically(tmp_path: Path):
     rendered = Template(template).render(**defaults)
 
     assert yaml.safe_load(rendered) == yaml.safe_load(text)
-    assert "      - waffleimage/ubuntu18.04" not in template
+    assert "%}  - {{ image }}" in template
+    assert "%}    - {{ image }}" not in template
+    assert "%}      - {{ image }}" not in template
     assert "  vagrant:" not in template
 
 
