@@ -4,55 +4,230 @@
   <img src="https://git.mig5.net/mig5/jinjaturtle/raw/branch/main/jinjaturtle.svg" alt="JinjaTurtle logo" width="240" />
 </div>
 
-JinjaTurtle is a command-line tool to help you generate Jinja2 templates and
-Ansible inventory from a native configuration file (or files) of a piece of
-software.
+JinjaTurtle is a command-line tool that helps turn existing native
+configuration files into reusable configuration-management templates.
+
+By default it generates:
+
+- a **Jinja2** template; and
+- an **Ansible defaults YAML** file containing the variables used by that
+  template.
+
+It can also generate **ERB** templates and **Puppet Hiera-style YAML** data for
+Puppet workflows.
+
+JinjaTurtle does not try to replace configuration-management tools. Its job is
+to speed up the boring first pass: take a real config file, discover the values
+inside it, replace those values with variables, and write the corresponding
+variable data beside the template.
 
 ## How it works
 
- * The config file(s) is/are examined
- * Parameter key names are generated based on the parameter names in the
-   config file. In keeping with Ansible best practices, you pass a prefix
-   for the key names, which should typically match the name of your Ansible
-   role.
- * A Jinja2 file is generated from the file with those parameter key names
-   injected as the `{{ variable }}` names.
- * An Ansible inventory YAML file is generated with those key names and the
-   *values* taken from the original config file as the default vars.
+JinjaTurtle examines a source config file and keeps the original structure as
+much as possible.
 
-By default, the Jinja2 template and the Ansible inventory are printed to
-stdout. However, it is possible to output the results to new files.
+For the default Jinja2/Ansible mode:
+
+1. The config file is parsed.
+2. Variable names are generated from the config keys and paths.
+3. Those variable names are prefixed with `--role-name`, which should usually
+   match your Ansible role name.
+4. A Jinja2 template is generated with values replaced by `{{ variable }}`
+   expressions.
+5. An Ansible defaults YAML file is generated with those variables and the
+   original values.
+
+For ERB/Puppet mode:
+
+1. The same parse/flatten/loop analysis is used.
+2. An ERB template is generated with Puppet-style instance variables such as
+   `<%= @memory_limit %>`.
+3. The variables file is written as Puppet Hiera-style data, such as
+   `php::memory_limit: 256M`.
+4. If `--puppet-class` is supplied, that class name is used as the Hiera
+   namespace while `--role-name` remains the local variable prefix.
+
+By default, the generated variable data and template are printed to stdout. Use
+`--defaults-output` and `--template-output` to write them to files.
+
+## Jinja2 / Ansible example
+
+Say you have a `php.ini` file and you are inside an Ansible role with
+`defaults/` and `templates/` directories:
+
+```shell
+jinjaturtle php.ini \
+  --role-name php \
+  --defaults-output defaults/main.yml \
+  --template-output templates/php.ini.j2
+```
+
+Given a source value such as:
+
+```ini
+memory_limit = 256M
+```
+
+JinjaTurtle will produce a template value like:
+
+```jinja2
+memory_limit = {{ php_memory_limit }}
+```
+
+and defaults data like:
+
+```yaml
+php_memory_limit: 256M
+```
+
+## ERB / Puppet example
+
+Use `--template-engine erb` when you want Puppet ERB output:
+
+```shell
+jinjaturtle php.ini \
+  --role-name php \
+  --template-engine erb \
+  --defaults-output data/common.yaml \
+  --template-output templates/php.ini.erb
+```
+
+Given the same source value:
+
+```ini
+memory_limit = 256M
+```
+
+JinjaTurtle will produce an ERB template value like:
+
+```erb
+memory_limit = <%= @memory_limit %>
+```
+
+and Hiera-style data like:
+
+```yaml
+php::memory_limit: 256M
+```
+
+The `--defaults-output` option name is retained for CLI compatibility, but in
+ERB mode the file is intended to be Puppet Hiera data rather than Ansible role
+defaults.
+
+JinjaTurtle does **not** generate Puppet classes or `file` resources. A Puppet
+module, or another tool such as Enroll, should still declare the class
+parameters and call the template, for example with Puppet's `template()`
+function.
+
+## Using `--puppet-class`
+
+Most direct usage can simply use the same value for the role name and Puppet
+class name:
+
+```shell
+jinjaturtle php.ini --role-name php --template-engine erb
+```
+
+This creates Hiera keys such as:
+
+```yaml
+php::memory_limit: 256M
+```
+
+and local ERB variables such as:
+
+```erb
+<%= @memory_limit %>
+```
+
+For generated systems, it can be useful to make `--role-name` more specific
+while keeping the Hiera keys under the real Puppet class. For example:
+
+```shell
+jinjaturtle php.ini \
+  --role-name php_etc_php_ini \
+  --puppet-class php \
+  --template-engine erb
+```
+
+In that case the variable prefix can stay file-specific, while the Hiera data
+is still written under `php::...`.
 
 ## What sort of config files can it handle?
 
-TOML, YAML, INI, JSON and XML-style config files should be okay. There are always
-going to be some edge cases in very complex files that are difficult to work
-with, though, so you may still find that you need to tweak the results.
+JinjaTurtle supports common structured and semi-structured config formats:
 
-For XML and YAML files, JinjaTurtle will attempt to generate 'for' loops
-and lists in the Ansible yaml if the config file looks homogenous enough to
-support it. However, if it lacks the confidence in this, it will fall back to
-using scalar-style flattened attributes.
+- TOML
+- YAML
+- INI-style files
+- JSON
+- XML
+- Postfix `main.cf`
+- systemd unit files, such as `*.service`, `*.socket`, `*.timer`, and related
+  unit types
+- OpenSSH-style config files, including `ssh_config`, `sshd_config`, and common
+  `*.conf` snippets detected as SSH config
 
-You may need or wish to tidy up the config to suit your needs.
+For ambiguous extensions such as `*.conf`, JinjaTurtle uses lightweight content
+sniffing. You can always force a handler with `--format`.
 
-The goal here is really to *speed up* converting files into Ansible/Jinja2,
-but not necessarily to make it perfect.
+For YAML, XML, TOML, INI-style, and other supported structured files,
+JinjaTurtle will attempt to generate loops when a repeated structure looks
+homogeneous enough. If it is not confident, it falls back to flattened scalar
+variables.
+
+Some very complex files will still need manual cleanup. The goal is to speed up
+conversion into Jinja2 or ERB templates, not to guarantee a perfect final module
+without review.
+
+## JSON, quoting, and type preservation
+
+JinjaTurtle tries to preserve rendered config types.
+
+For JSON, it uses JSON-aware expressions rather than plain string substitution.
+This avoids generating invalid JSON such as:
+
+```json
+{"enabled": True}
+```
+
+when the correct rendered JSON should be:
+
+```json
+{"enabled": true}
+```
+
+In Jinja2 mode this uses Ansible-style JSON filters. In ERB mode it emits Ruby
+JSON generation where required, for example:
+
+```erb
+<% require 'json' -%>
+{
+  "enabled": <%= JSON.generate(@enabled) %>
+}
+```
+
+That is expected for JSON ERB templates.
 
 ## Can I convert multiple files at once?
 
-Certainly! Pass the folder name instead of a specific file name, and JinjaTurtle
-will convert any files it understands in that folder, storing all the various
-vars in the destination defaults yaml file, and converting each file into a
-Jinja2 template per file type.
+Yes. Pass a directory instead of a single file and JinjaTurtle will convert the
+files it understands in that directory.
 
-If all the files had the same 'type', there'll be one Jinja2 template.
+```shell
+jinjaturtle ./config-dir \
+  --role-name myrole \
+  --defaults-output defaults/main.yml \
+  --template-output templates/
+```
 
-You can also pass `--recursive` to recurse into subfolders.
+Use `--recursive` to recurse into subdirectories.
 
-Note: when using 'folder' mode and multiple files of the same type, their vars
-will be listed under an 'items' parent key in the yaml, each with an `id` key.
-You'll then want to use a `loop` in Ansible later, e.g:
+In folder mode, variables for multiple files of the same type are grouped under
+an `items`-style structure in the generated YAML so that the resulting templates
+can be used with loops in Ansible.
+
+For example:
 
 ```yaml
 - name: Render configs
@@ -93,9 +268,9 @@ sudo dnf upgrade --refresh
 sudo dnf install jinjaturtle
 ```
 
-### From PyPi
+### From PyPI
 
-```
+```bash
 pip install jinjaturtle
 ```
 
@@ -103,61 +278,81 @@ pip install jinjaturtle
 
 Clone the repo and then run inside the clone:
 
-```
+```bash
 poetry install
 ```
 
 ### AppImage
 
-Download the AppImage from the Releases and make it executable, and put it
-on your `$PATH`.
-
-## How to run it
-
-Say you have a `php.ini` file and you are in a directory structure like an
-Ansible role (with subfolders `defaults` and `templates`):
-
-```shell
-jinjaturtle php.ini \
-  --role-name php \
-  --defaults-output defaults/main.yml \
-  --template-output templates/php.ini.j2
-```
+Download the AppImage from the Releases page, make it executable, and put it on
+your `$PATH`.
 
 ## Full usage info
 
-```
-usage: jinjaturtle [-h] -r ROLE_NAME [-f {json,ini,toml,yaml,xml,postfix,systemd}] [-d DEFAULTS_OUTPUT] [-t TEMPLATE_OUTPUT] config
+```text
+usage: jinjaturtle [-h] [-r ROLE_NAME] [--recursive]
+                   [-f {ini,json,toml,yaml,xml,postfix,systemd,ssh}]
+                   [-d DEFAULTS_OUTPUT] [-t TEMPLATE_OUTPUT]
+                   [--template-engine {jinja2,erb}]
+                   [--puppet-class PUPPET_CLASS]
+                   config
 
-Convert a config file into Ansible inventory and a Jinja2 template.
+Convert a config file into an Ansible defaults file and Jinja2 template.
 
 positional arguments:
-  config                Path to the source configuration file.
+  config                Path to a config file OR a folder containing supported
+                        config files. Supported: .toml, .yaml/.yml, .json,
+                        .ini/.cfg/.conf, .xml, ssh_config/sshd_config
 
 options:
   -h, --help            show this help message and exit
   -r, --role-name ROLE_NAME
-                        Ansible role name, used as variable prefix (e.g. cometbft).
-  -f, --format {ini,json,toml,xml}
-                        Force config format instead of auto-detecting from filename.
+                        Role name / variable prefix. In Jinja2 mode this is
+                        usually the Ansible role name. In ERB mode it is used
+                        as the local variable prefix. Defaults to jinjaturtle.
+  --recursive           When CONFIG is a folder, recurse into subfolders.
+  -f, --format {ini,json,toml,yaml,xml,postfix,systemd,ssh}
+                        Force config format instead of auto-detecting from
+                        filename.
   -d, --defaults-output DEFAULTS_OUTPUT
-                        Path to write defaults/main.yml. If omitted, default vars are printed to stdout.
+                        Path to write the generated variable YAML. If omitted,
+                        it is printed to stdout.
   -t, --template-output TEMPLATE_OUTPUT
-                        Path to write the Jinja2 config template. If omitted, template is printed to stdout.
+                        Path to write the generated config template. If omitted,
+                        it is printed to stdout.
+  --template-engine {jinja2,erb}
+                        Template syntax to generate. Defaults to jinja2. Use
+                        erb for Puppet templates.
+  --puppet-class PUPPET_CLASS
+                        Puppet class / Hiera namespace to use with
+                        --template-engine erb. Defaults to --role-name.
 ```
 
 ## Additional supported formats
 
-JinjaTurtle can also template some common "bespoke" config formats:
+JinjaTurtle also templates some common bespoke config formats:
 
 - **Postfix main.cf** (`main.cf`) → `--format postfix`
 - **systemd unit files** (`*.service`, `*.socket`, etc.) → `--format systemd`
+- **OpenSSH config** (`ssh_config`, `sshd_config`, and detected snippets) →
+  `--format ssh`
 
-For ambiguous extensions like `*.conf`, JinjaTurtle uses lightweight content sniffing; you can always force a specific handler via `--format`.
+For ambiguous extensions like `*.conf`, JinjaTurtle uses lightweight content
+sniffing. You can always force a specific handler with `--format`.
 
+## Relationship with Enroll
+
+JinjaTurtle can be used directly, but it is also useful as a helper for tools
+that generate configuration-management code.
+
+Enroll can call JinjaTurtle when it is available on the `PATH`. In that setup,
+Enroll decides where Puppet, Ansible, or Salt files belong, while JinjaTurtle
+concentrates on converting harvested config files into templates plus variable
+data.
 
 ## Found a bug, have a suggestion?
 
-You can e-mail me (see the pyproject.toml for details) or contact me on the Fediverse:
+You can e-mail me; see `pyproject.toml` for details. You can also contact me on
+the Fediverse:
 
 https://goto.mig5.net/@mig5
