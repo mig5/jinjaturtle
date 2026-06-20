@@ -43,8 +43,10 @@ def to_json(
     return filtered(value, f"to_json({', '.join(args)})")
 
 
-def statement(value: str) -> str:
+def statement(value: str, *, trim_right: bool = False) -> str:
     """Return a Jinja2 statement tag for an already-built statement body."""
+    if trim_right:
+        return f"{{% {value} -%}}"
     return f"{{% {value} %}}"
 
 
@@ -64,8 +66,8 @@ def for_start(item_var: str, collection_var: str) -> str:
     return statement(f"for {item_var} in {collection_var}")
 
 
-def for_end() -> str:
-    return statement("endfor")
+def for_end(*, trim_right: bool = False) -> str:
+    return statement("endfor", trim_right=trim_right)
 
 
 def yaml_scalar_expression(var_name: str, raw_value: str | None = None) -> str:

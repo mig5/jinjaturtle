@@ -157,6 +157,9 @@ class ErbTranslator:
         return self.ruby_value(expr)
 
     def statement_to_erb(self, stmt: str) -> str:
+        if stmt.endswith("-"):
+            stmt = stmt[:-1].rstrip()
+
         if stmt.startswith("for "):
             m = re.match(
                 r"^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([A-Za-z_][A-Za-z0-9_]*)$",
@@ -172,7 +175,7 @@ class ErbTranslator:
         if stmt == "endfor":
             if self.loop_stack:
                 self.loop_stack.pop()
-            return "<% end -%>"
+            return "<% end %>"
 
         if stmt.startswith("if "):
             cond = stmt[3:].strip()

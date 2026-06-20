@@ -10,6 +10,7 @@ from jinjaturtle.core import (
     analyze_loops,
     flatten_config,
     generate_ansible_yaml,
+    generate_erb_template,
     generate_jinja2_template,
 )
 from jinjaturtle.handlers.yaml import YamlHandler
@@ -167,6 +168,52 @@ def test_yaml_indentless_sequence_loop_roundtrips_semantically(tmp_path: Path):
     assert "%}    - {{ image }}" not in template
     assert "%}      - {{ image }}" not in template
     assert "  vagrant:" not in template
+
+
+def test_yaml_loop_preserves_blank_separator_after_list(tmp_path: Path):
+    from jinja2 import Template
+
+    cases = [
+        (
+            "blank",
+            "require:\n  - rubocop-performance\n  - rubocop-rspec\n\nAllCops:\n  NewCops: enable\n",
+            "\n  - rubocop-rspec\n\nAllCops:",
+            "<% end %>\nAllCops:",
+        ),
+        (
+            "no_blank",
+            "require:\n  - rubocop-performance\n  - rubocop-rspec\nAllCops:\n  NewCops: enable\n",
+            "\n  - rubocop-rspec\nAllCops:",
+            "<% end %>AllCops:",
+        ),
+    ]
+
+    for label, text, rendered_expected, erb_expected in cases:
+        path = tmp_path / f"{label}.yml"
+        path.write_text(text, encoding="utf-8")
+
+        fmt, parsed = parse_config(path)
+        loop_candidates = analyze_loops(fmt, parsed)
+        flat_items = flatten_config(fmt, parsed, loop_candidates)
+        defaults = yaml.safe_load(
+            generate_ansible_yaml("role", flat_items, loop_candidates)
+        )
+
+        template = generate_jinja2_template(
+            fmt, parsed, "role", original_text=text, loop_candidates=loop_candidates
+        )
+        rendered = Template(template).render(**defaults)
+        assert rendered_expected in rendered
+
+        erb_template = generate_erb_template(
+            fmt,
+            parsed,
+            "role",
+            original_text=text,
+            loop_candidates=loop_candidates,
+            flat_items=flat_items,
+        )
+        assert erb_expected in erb_template
 
 
 def test_yaml_loop_preserves_following_top_level_comments(tmp_path: Path):

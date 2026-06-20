@@ -246,8 +246,18 @@ class YamlHandler(DictLikeHandler):
                     return None, None
             return None, None
 
+        def next_significant_line(index: int) -> tuple[int, str] | None:
+            for future_line in lines[index + 1 :]:
+                future_stripped = future_line.lstrip()
+                if not future_stripped.strip() or future_stripped.startswith("#"):
+                    continue
+                return len(future_line) - len(future_stripped), future_stripped
+            return None
+
         for line_index, raw_line in enumerate(lines):
             stripped = raw_line.lstrip()
+            is_blank = not stripped.strip()
+            is_comment = stripped.startswith("#")
             indent = len(raw_line) - len(stripped)
 
             # If we're skipping lines inside a collection replaced by a loop,
@@ -261,7 +271,22 @@ class YamlHandler(DictLikeHandler):
             # Stop only when a non-list item at the parent indentation appears,
             # or when indentation moves above the parent collection.
             if skip_until_indent is not None:
-                if not stripped or stripped.startswith("#"):
+                if is_blank:
+                    next_line = next_significant_line(line_index)
+                    if next_line is None:
+                        skip_until_indent = None
+                        out_lines.append(raw_line)
+                    else:
+                        next_indent, next_stripped = next_line
+                        still_in_collection = next_indent > skip_until_indent or (
+                            next_indent == skip_until_indent
+                            and next_stripped.startswith("- ")
+                        )
+                        if not still_in_collection:
+                            skip_until_indent = None
+                            out_lines.append(raw_line)
+                    continue
+                if is_comment:
                     if indent <= skip_until_indent:
                         skip_until_indent = None
                         out_lines.append(raw_line)
@@ -277,7 +302,7 @@ class YamlHandler(DictLikeHandler):
                     continue  # Skip this line
 
             # Blank or comment lines
-            if not stripped or stripped.startswith("#"):
+            if is_blank or is_comment:
                 out_lines.append(raw_line)
                 continue
 
@@ -490,7 +515,7 @@ class YamlHandler(DictLikeHandler):
             lines.append(j2.for_start(item_var, collection_var))
             lines.append(j2.for_end())
 
-        return "\n".join(lines) + "\n"
+        return "\n".join(lines)
 
     def _dict_to_yaml_lines(
         self,
