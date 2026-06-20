@@ -16,7 +16,7 @@ Notes:
   * If the folder contains *multiple* formats, we generate one template per
     format (e.g. config.yaml.j2, config.xml.j2) and emit one list variable per
     format in the defaults YAML.
-  * JSON union templates are emitted using a simple `{{ data | tojson }}`
+  * JSON union templates are emitted using a simple `{{ data | to_json }}`
     approach to avoid comma-management complexity for optional keys.
 """
 
@@ -624,7 +624,7 @@ def process_directory(
                 if multiple_formats
                 else f"{role_prefix}_items"
             )
-            template = "{{ data | tojson(indent=2) }}\n"
+            template = "{{ data | to_json(indent=2, ensure_ascii=False) }}\n"
             items: list[dict[str, Any]] = []
             for rid, parsed in zip(rel_ids, parsed_list):
                 items.append({"id": rid, "data": parsed})

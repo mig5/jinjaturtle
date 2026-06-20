@@ -148,7 +148,10 @@ class TomlHandler(DictLikeHandler):
                     elif candidate.item_schema in ("simple_dict", "nested"):
                         # Dict list loop - TOML array of tables
                         # This is complex for TOML, using simplified approach
-                        lines.append(f"{key} = {{{{ {var_name} | tojson }}}}")
+                        lines.append(
+                            f"{key} = "
+                            f"{{{{ {var_name} | to_json(ensure_ascii=False) }}}}"
+                        )
                 else:
                     # Not a loop, treat as regular variable
                     lines.append(f"{key} = {{{{ {var_name} }}}}")
@@ -477,8 +480,10 @@ class TomlHandler(DictLikeHandler):
                         f"]"
                     )
                 else:
-                    # Dict/nested loop - use tojson filter for complex arrays
-                    replacement_value = f"{{{{ {collection_var} | tojson }}}}"
+                    # Dict/nested loop - use to_json filter for complex arrays
+                    replacement_value = (
+                        f"{{{{ {collection_var} | to_json(ensure_ascii=False) }}}}"
+                    )
 
                 new_content = (
                     before_eq + "=" + leading_ws + replacement_value + comment_part

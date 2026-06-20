@@ -454,6 +454,7 @@ class TestStructuralConsistency:
 
         # Try to render the template
         env = Environment(undefined=StrictUndefined)
+        env.filters["to_json"] = lambda value, **kwargs: json.dumps(value, **kwargs)
         try:
             jinja_template = env.from_string(template)
             rendered = jinja_template.render(variables)
@@ -520,11 +521,9 @@ class TestRegressionBugs:
             "app_database" in template
         ), f"Template should reference app_database\n{template}"
 
-    def test_json_array_no_index_refs(self):
+    def test_json_array_uses_index_refs_for_source_fidelity(self):
         """
-        Regression test: JSON arrays should not generate index references.
-
-        Bug: Template had {{ app_list_0 }}, {{ app_list_1 }} when YAML had app_list as list.
+        JSON arrays stay index-based so original inline formatting can survive.
         """
         import json
 
@@ -536,22 +535,18 @@ class TestRegressionBugs:
 
         ansible_yaml = generate_ansible_yaml("app", flat_items, loop_candidates)
         template = generate_jinja2_template(
-            "json", parsed, "app", None, loop_candidates
+            "json", parsed, "app", json_text, loop_candidates
         )
 
-        # YAML should have app_items as a list
         defaults = yaml.safe_load(ansible_yaml)
-        assert isinstance(defaults.get("app_items"), list)
-
-        # Template should NOT have app_items_0, app_items_1, app_items_2
-        for i in range(3):
-            assert (
-                f"app_items_{i}" not in template
-            ), f"Template incorrectly uses scalar 'app_items_{i}'\n{template}"
-
-        # Template SHOULD use a loop
-        assert "{% for" in template
-        assert "app_items" in template
+        assert loop_candidates == []
+        assert defaults["app_items_0"] == 1
+        assert defaults["app_items_1"] == 2
+        assert defaults["app_items_2"] == 3
+        assert "{% for" not in template
+        assert "app_items_0" in template
+        assert "app_items_1" in template
+        assert "app_items_2" in template
 
 
 if __name__ == "__main__":

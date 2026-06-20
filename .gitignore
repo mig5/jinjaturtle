@@ -8,3 +8,5 @@ dist
 *.j2
 *.toml
 regenerated_*
+*.orig
+*.rej

@@ -62,3 +62,73 @@ def test_cli_writes_output_files(tmp_path, capsys):
     # When writing to files, we shouldn't print the big headers
     assert "# defaults/main.yml" not in captured.out
     assert "# config.j2" not in captured.out
+
+
+def test_cli_folder_stdout(tmp_path, capsys):
+    """Folder mode without output paths prints defaults and all templates."""
+    (tmp_path / "a.json").write_text('{"name": "one"}\n', encoding="utf-8")
+    (tmp_path / "b.yaml").write_text("name: two\n", encoding="utf-8")
+
+    exit_code = cli._main([str(tmp_path), "-r", "role"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "# defaults/main.yml" in captured.out
+    assert "# config.json.j2" in captured.out
+    assert "# config.yaml.j2" in captured.out
+    assert "role_json_items" in captured.out
+    assert "role_yaml_items" in captured.out
+
+
+def test_cli_folder_writes_template_directory(tmp_path, capsys):
+    """Folder mode writes multiple templates when template output is a directory."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "a.json").write_text('{"name": "one"}\n', encoding="utf-8")
+    (src_dir / "b.yaml").write_text("name: two\n", encoding="utf-8")
+    defaults_path = tmp_path / "defaults.yml"
+    template_dir = tmp_path / "templates"
+
+    exit_code = cli._main(
+        [
+            str(src_dir),
+            "-r",
+            "role",
+            "--defaults-output",
+            str(defaults_path),
+            "--template-output",
+            str(template_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    assert defaults_path.is_file()
+    assert (template_dir / "config.json.j2").is_file()
+    assert (template_dir / "config.yaml.j2").is_file()
+    captured = capsys.readouterr()
+    assert captured.out == ""
+
+
+def test_cli_folder_single_output_file_when_one_format(tmp_path):
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "a.json").write_text('{"name": "one"}\n', encoding="utf-8")
+    defaults_path = tmp_path / "defaults.yml"
+    template_path = tmp_path / "config.j2"
+
+    exit_code = cli._main(
+        [
+            str(src_dir),
+            "-r",
+            "role",
+            "--defaults-output",
+            str(defaults_path),
+            "--template-output",
+            str(template_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert defaults_path.is_file()
+    assert template_path.is_file()
+    assert "to_json" in template_path.read_text(encoding="utf-8")

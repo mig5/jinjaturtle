@@ -7,6 +7,7 @@ import yaml
 
 from jinjaturtle.core import (
     parse_config,
+    analyze_loops,
     flatten_config,
     generate_ansible_yaml,
     generate_jinja2_template,
@@ -202,6 +203,36 @@ def test_yaml_loop_preserves_following_top_level_comments(tmp_path: Path):
     assert "# Offense count: 2" in rendered
     assert "# This cop supports unsafe autocorrection" in rendered
     assert yaml.safe_load(rendered) == yaml.safe_load(text)
+
+
+def test_yaml_scalar_loop_preserves_quoted_list_items(tmp_path: Path):
+    from jinja2 import Template
+
+    text = textwrap.dedent(
+        """
+        files:
+          - 'spec/unit/puppet/provider/dsc_base_provider/dsc_base_provider_spec.rb'
+          - 'spec/unit/pwsh/util_spec.rb'
+          - 'spec/unit/pwsh/windows_powershell_spec.rb'
+        """
+    ).lstrip()
+    path = tmp_path / "quoted-list.yaml"
+    path.write_text(text, encoding="utf-8")
+
+    fmt, parsed = parse_config(path)
+    loop_candidates = analyze_loops(fmt, parsed)
+    flat_items = flatten_config(fmt, parsed, loop_candidates)
+    defaults = yaml.safe_load(
+        generate_ansible_yaml("role", flat_items, loop_candidates)
+    )
+    template = generate_jinja2_template(
+        fmt, parsed, "role", original_text=text, loop_candidates=loop_candidates
+    )
+    rendered = Template(template).render(**defaults)
+
+    assert loop_candidates
+    assert "- '{{" in template
+    assert rendered == text
 
 
 def test_yaml_bool_scalars_render_with_yaml_spelling(tmp_path: Path):

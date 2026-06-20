@@ -31,6 +31,7 @@ from jinjaturtle.core import (
 def render_template(template: str, variables: dict[str, Any]) -> str:
     """Render a Jinja2 template with variables."""
     env = Environment(undefined=StrictUndefined)
+    env.filters["to_json"] = lambda value, **kwargs: json.dumps(value, **kwargs)
     jinja_template = env.from_string(template)
     return jinja_template.render(variables)
 

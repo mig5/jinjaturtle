@@ -276,7 +276,15 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
 def analyze_loops(fmt: str, parsed: Any) -> list[LoopCandidate]:
     """
     Analyze parsed config to find loop opportunities.
+
+    JSON files are intentionally kept scalar/index-based instead of being
+    collapsed into generated loops. JSON is commonly checked byte-for-byte by
+    configuration management tools, and preserving inline arrays/objects is
+    more valuable than reducing variable count.
     """
+    if fmt == "json":
+        return []
+
     analyzer = LoopAnalyzer()
     candidates = analyzer.analyze(parsed, fmt)
 
