@@ -510,10 +510,10 @@ class YamlHandler(DictLikeHandler):
             # into the rendered YAML and nesting the next top-level key.
             lines.append(f"{j2.for_start(item_var, collection_var)}{item_lines[0]}")
             lines.extend(item_lines[1:])
-            lines.append(j2.for_end())
+            lines.append(j2.for_end(keep_trailing_newline=True))
         else:
             lines.append(j2.for_start(item_var, collection_var))
-            lines.append(j2.for_end())
+            lines.append(j2.for_end(keep_trailing_newline=True))
 
         return "\n".join(lines)
 

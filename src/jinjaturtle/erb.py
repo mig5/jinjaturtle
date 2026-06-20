@@ -157,7 +157,7 @@ class ErbTranslator:
         return self.ruby_value(expr)
 
     def statement_to_erb(self, stmt: str) -> str:
-        if stmt.endswith("-"):
+        if stmt.endswith(("-", "+")):
             stmt = stmt[:-1].rstrip()
 
         if stmt.startswith("for "):

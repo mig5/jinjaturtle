@@ -217,7 +217,7 @@ def test_yaml_loop_preserves_blank_separator_after_list(tmp_path: Path):
 
 
 def test_yaml_loop_preserves_following_top_level_comments(tmp_path: Path):
-    from jinja2 import Template
+    from jinja2 import Environment, Template
 
     from jinjaturtle.core import analyze_loops
 
@@ -248,10 +248,15 @@ def test_yaml_loop_preserves_following_top_level_comments(tmp_path: Path):
         fmt, parsed, "role", original_text=text, loop_candidates=loop_candidates
     )
     rendered = Template(template).render(**defaults)
+    ansible_rendered = (
+        Environment(trim_blocks=True).from_string(template).render(**defaults)
+    )
 
     assert "# Offense count: 2" in rendered
     assert "# This cop supports unsafe autocorrection" in rendered
+    assert "spec.rb\n\n# Offense count: 2" in ansible_rendered
     assert yaml.safe_load(rendered) == yaml.safe_load(text)
+    assert yaml.safe_load(ansible_rendered) == yaml.safe_load(text)
 
 
 def test_yaml_scalar_loop_preserves_quoted_list_items(tmp_path: Path):
