@@ -1,36 +1,40 @@
-[tool.poetry]
+[project]
 name = "jinjaturtle"
 version = "0.5.5"
 description = "Convert config files into Ansible defaults and Jinja2 templates."
-authors = ["Miguel Jacq <mig@mig5.net>"]
+authors = [
+    { name = "Miguel Jacq", email = "mig@mig5.net" },
+]
 license = "GPL-3.0-or-later"
 readme = "README.md"
-packages = [{ include = "jinjaturtle", from = "src" }]
-
+requires-python = ">=3.10,<4.0"
 keywords = ["ansible", "jinja2", "config", "toml", "ini", "yaml", "json", "devops"]
+dependencies = [
+    "PyYAML (>=6.0,<7.0)",
+    "defusedxml (>=0.7.1,<0.8.0)",
+    "jinja2 (>=3.1.6,<4.0.0)",
+    "tomli (>=2.0.0,<3.0.0) ; python_version < '3.11'",
+]
 
+[project.urls]
 homepage = "https://git.mig5.net/mig5/jinjaturtle"
 repository = "https://git.mig5.net/mig5/jinjaturtle"
 
-[tool.poetry.dependencies]
-python = "^3.10"
-PyYAML = "^6.0"
-tomli = { version = "^2.0.0", python = "<3.11" }
-defusedxml = "^0.7.1"
-jinja2 = "^3.1.6"
-
-[tool.poetry.scripts]
+[project.scripts]
 jinjaturtle = "jinjaturtle.cli:main"
 
+[tool.poetry]
+packages = [{ include = "jinjaturtle", from = "src" }]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8"
+pytest-cov = "^5"
+pyproject-appimage = "^4.2"
+
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core>=2.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pyproject-appimage]
 script = "jinjaturtle"
 output = "JinjaTurtle.AppImage"
-
-[tool.poetry.dev-dependencies]
-pytest = "^8"
-pytest-cov = "^5"
-pyproject-appimage = "^4.2"
