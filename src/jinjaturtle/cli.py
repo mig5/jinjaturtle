@@ -199,4 +199,8 @@ def main() -> None:
     """
     Console-script entry point.
     """
-    _main(sys.argv[1:])
+    sys.exit(_main(sys.argv[1:]))
+
+
+if __name__ == "__main__":
+    main()

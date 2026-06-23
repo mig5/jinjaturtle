@@ -6,6 +6,7 @@ from typing import Any
 
 from . import BaseHandler
 from .. import j2
+from ..escape import escape_jinja_literal
 
 
 class IniHandler(BaseHandler):
@@ -84,16 +85,18 @@ class IniHandler(BaseHandler):
             line = raw_line
             stripped = line.lstrip()
 
-            # Blank or pure comment: keep as-is
+            # Blank or pure comment: keep formatting, but neutralise any
+            # template metacharacters so attacker-controlled comment text cannot
+            # become live template code in the output.
             if not stripped or stripped[0] in {"#", ";"}:
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             # Section header
             if stripped.startswith("[") and "]" in stripped:
                 header_inner = stripped[1 : stripped.index("]")]
                 current_section = header_inner.strip()
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             # Work without newline so we can re-attach it exactly
@@ -108,8 +111,9 @@ class IniHandler(BaseHandler):
 
             eq_index = content.find("=")
             if eq_index == -1:
-                # Not a simple key=value line: leave untouched
-                out_lines.append(raw_line)
+                # Not a simple key=value line: leave content intact but escape
+                # any template metacharacters.
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             before_eq = content[:eq_index]
@@ -117,7 +121,7 @@ class IniHandler(BaseHandler):
 
             key = before_eq.strip()
             if not key:
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             # Whitespace after '='
@@ -146,8 +150,16 @@ class IniHandler(BaseHandler):
             else:
                 replacement_value = j2.variable(var_name)
 
+            # ``before_eq`` (key + surrounding whitespace) and ``comment_part``
+            # both originate from the source file and may carry template
+            # metacharacters; escape each independently so the safe
+            # ``replacement_value`` placeholder between them is preserved.
             new_content = (
-                before_eq + "=" + leading_ws + replacement_value + comment_part
+                escape_jinja_literal(before_eq)
+                + "="
+                + leading_ws
+                + replacement_value
+                + escape_jinja_literal(comment_part)
             )
             out_lines.append(new_content + newline)
 

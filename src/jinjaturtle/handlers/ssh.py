@@ -7,6 +7,7 @@ from typing import Any
 
 from . import BaseHandler
 from .. import j2
+from ..escape import escape_jinja_literal
 
 
 _SECTION_KEYWORDS = {"host", "match"}
@@ -255,12 +256,12 @@ class SshConfigHandler(BaseHandler):
         out_lines: list[str] = []
         for ln in parsed.lines:
             if ln.kind != "kv":
-                out_lines.append(ln.raw)
+                out_lines.append(escape_jinja_literal(ln.raw))
                 continue
 
             path = self._path_for_line(ln)
             if not path:
-                out_lines.append(ln.raw)
+                out_lines.append(escape_jinja_literal(ln.raw))
                 continue
 
             var = self.make_var_name(role_prefix, path)
@@ -270,9 +271,12 @@ class SshConfigHandler(BaseHandler):
             else:
                 replacement_value = j2.variable(var)
 
+            # ``before_value`` (keyword + spacing) and ``comment`` are
+            # source-derived; escape around the safe placeholder.
             rendered = (
-                f"{ln.before_value}{replacement_value}"
-                f"{ln.whitespace_before_comment}{ln.comment}{ln.newline}"
+                f"{escape_jinja_literal(ln.before_value)}{replacement_value}"
+                f"{ln.whitespace_before_comment}"
+                f"{escape_jinja_literal(ln.comment)}{ln.newline}"
             )
             out_lines.append(rendered)
 

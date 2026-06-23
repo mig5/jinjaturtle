@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+from .escape import escape_erb_literal
+
 
 def _safe_name(raw: str, *, fallback: str = "var") -> str:
     text = re.sub(r"[^A-Za-z0-9_]+", "_", str(raw or fallback)).strip("_").lower()
@@ -38,10 +40,9 @@ def puppet_local_var_name(
     generated Jinja variable such as ``php_memory_limit`` becomes Puppet local
     parameter ``memory_limit`` and Hiera key ``php::memory_limit``.
 
-    Enroll sometimes needs a file-specific variable prefix to avoid collisions
-    inside a generated module.  When ``puppet_class`` differs from
-    ``role_prefix`` we keep the full generated variable name as the local
-    parameter and only use ``puppet_class`` as the Hiera namespace.
+    When ``puppet_class`` differs from ``role_prefix`` we keep the full
+    generated variable name as the local parameter and only use ``puppet_class``
+    as the Hiera namespace.
     """
 
     var_name = _safe_name(jinja_var_name, fallback="value")
@@ -71,7 +72,33 @@ class ErbTranslator:
         self.loop_stack: list[tuple[str, str, str]] = []
         self.needs_json = False
 
+    # Matches a JinjaTurtle ``{% raw %} ... {% endraw %}`` block (non-greedy).
+    # JinjaTurtle emits raw blocks only to carry verbatim, security-escaped
+    # source text (comments and unrecognised lines), so the *contents* must be
+    # treated as literal output, never translated as Jinja tokens.
+    _RAW_BLOCK_RE = re.compile(r"{%\s*raw\s*%}(.*?){%\s*endraw\s*%}", re.S)
+
     def translate(self, template_text: str) -> str:
+        # Split out raw blocks first.  Their inner text is literal and must be
+        # carried through as literal ERB (with ERB delimiters re-escaped), rather
+        # than tokenised -- otherwise an escaped Jinja payload inside a comment
+        # would be "re-animated" into live ERB during translation.
+        segments = self._RAW_BLOCK_RE.split(template_text)
+        out: list[str] = []
+        # re.split with one capture group yields: [text, raw_inner, text, ...].
+        for idx, segment in enumerate(segments):
+            if idx % 2 == 1:
+                # Captured raw-block contents: emit as literal ERB text.
+                out.append(escape_erb_literal(segment))
+            else:
+                out.append(self._translate_tokens(segment))
+
+        rendered = "".join(out)
+        if self.needs_json and "require 'json'" not in rendered:
+            rendered = "<% require 'json' -%>\n" + rendered
+        return rendered
+
+    def _translate_tokens(self, template_text: str) -> str:
         parts = self._TOKEN_RE.split(template_text)
         out: list[str] = []
         for token in parts:
@@ -86,11 +113,7 @@ class ErbTranslator:
                 out.append(self.statement_to_erb(stmt))
                 continue
             out.append(token)
-
-        rendered = "".join(out)
-        if self.needs_json and "require 'json'" not in rendered:
-            rendered = "<% require 'json' -%>\n" + rendered
-        return rendered
+        return "".join(out)
 
     def local_var(self, name: str) -> str:
         return puppet_local_var_name(

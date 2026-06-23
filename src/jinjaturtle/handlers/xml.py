@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET  # nosec
 
 from .base import BaseHandler
 from .. import j2
+from ..escape import escape_jinja_literal
 from ..loop_analyzer import LoopCandidate
 
 
@@ -230,6 +231,37 @@ class XmlHandler(BaseHandler):
 
         walk(root, ())
 
+    # Internal marker prefixes used by JinjaTurtle's own comment nodes.  These
+    # must NOT be escaped (they are converted into real Jinja control structures
+    # downstream).  Source-file comments have none of these prefixes.
+    _MARKER_PREFIXES = ("LOOP:", "IF:", "ENDIF:")
+
+    def _is_jt_marker(self, comment_text: str) -> bool:
+        stripped = (comment_text or "").lstrip()
+        return any(stripped.startswith(p) for p in self._MARKER_PREFIXES)
+
+    def _escape_source_comments(self, root: ET.Element) -> None:
+        """Escape template metacharacters in comments preserved from the source.
+
+        XML comments are re-emitted verbatim by ``ET.tostring`` (the tree is
+        parsed with ``insert_comments=True``).  Attacker-controlled comment text
+        such as ``<!-- {{ cmd.run('id') }} -->`` would otherwise become live
+        template code.  Element/attribute *names* cannot carry Jinja delimiters
+        (XML naming rules forbid the characters and the parser rejects them), and
+        text/attribute *values* are already replaced with ``{{ var }}``
+        placeholders, so comments (and the prolog, handled separately) are the
+        only XML injection vector.
+
+        JinjaTurtle's own internal marker comments are left untouched so they can
+        be converted into real loops/conditionals later.
+        """
+        # ET represents comments with a callable tag (ET.Comment).  Iterate all
+        # descendants and escape comment text that is not one of our markers.
+        for elem in root.iter():
+            if elem.tag is ET.Comment:
+                if not self._is_jt_marker(elem.text or ""):
+                    elem.text = escape_jinja_literal(elem.text or "")
+
     def _generate_xml_template_from_text(self, role_prefix: str, text: str) -> str:
         """Generate scalar-only Jinja2 template."""
         prolog, body = self._split_xml_prolog(text)
@@ -240,12 +272,16 @@ class XmlHandler(BaseHandler):
 
         self._apply_jinja_to_xml_tree(role_prefix, root)
 
+        # Neutralise template metacharacters in any comments preserved from the
+        # source file before serialising.
+        self._escape_source_comments(root)
+
         indent = getattr(ET, "indent", None)
         if indent is not None:
             indent(root, space="  ")  # type: ignore[arg-type]
 
         xml_body = ET.tostring(root, encoding="unicode")
-        return prolog + xml_body
+        return escape_jinja_literal(prolog) + xml_body
 
     def _generate_xml_template_with_loops_from_text(
         self,
@@ -265,6 +301,11 @@ class XmlHandler(BaseHandler):
         # Apply Jinja transformations (including loop markers)
         self._apply_jinja_to_xml_tree(role_prefix, root, loop_candidates)
 
+        # Escape comments preserved from the source.  JinjaTurtle's own
+        # LOOP/IF/ENDIF marker comments are recognised and left intact so they
+        # can be converted into real Jinja control structures below.
+        self._escape_source_comments(root)
+
         # Convert to string
         indent = getattr(ET, "indent", None)
         if indent is not None:
@@ -275,7 +316,7 @@ class XmlHandler(BaseHandler):
         # Post-process to replace loop markers with actual Jinja loops
         xml_body = self._insert_xml_loops(xml_body, role_prefix, loop_candidates, root)
 
-        return prolog + xml_body
+        return escape_jinja_literal(prolog) + xml_body
 
     def _insert_xml_loops(
         self,

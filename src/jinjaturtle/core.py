@@ -412,8 +412,6 @@ def generate_puppet_hiera_yaml(
     ``role_prefix`` remains the source variable prefix used by JinjaTurtle while
     ``puppet_class`` is the Puppet class/Hiera namespace.  In the normal case
     they are the same, so ``php_memory_limit`` becomes ``php::memory_limit``.
-    Enroll may pass a file-specific role prefix and a separate Puppet class to
-    avoid parameter-name collisions inside one generated Puppet module.
     """
 
     klass = puppet_class_name(puppet_class or role_prefix)

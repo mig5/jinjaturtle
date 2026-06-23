@@ -5,6 +5,7 @@ from typing import Any
 
 from . import DictLikeHandler
 from .. import j2
+from ..escape import escape_jinja_literal
 from ..loop_analyzer import LoopCandidate
 
 try:
@@ -77,19 +78,25 @@ class TomlHandler(DictLikeHandler):
         def emit_kv(path: tuple[str, ...], key: str, value: Any) -> None:
             var_name = self.make_var_name(role_prefix, path + (key,))
             if isinstance(value, str):
-                lines.append(f"{key} = {self._toml_quoted_expr(var_name)}")
+                lines.append(
+                    f"{escape_jinja_literal(str(key))} = {self._toml_quoted_expr(var_name)}"
+                )
             elif isinstance(value, bool):
                 # Booleans need | lower filter (Python True/False → TOML true/false)
-                lines.append(f"{key} = {self._toml_value_expr(var_name, value)}")
+                lines.append(
+                    f"{escape_jinja_literal(str(key))} = {self._toml_value_expr(var_name, value)}"
+                )
             else:
-                lines.append(f"{key} = {self._toml_value_expr(var_name, value)}")
+                lines.append(
+                    f"{escape_jinja_literal(str(key))} = {self._toml_value_expr(var_name, value)}"
+                )
 
         def walk(obj: dict[str, Any], path: tuple[str, ...] = ()) -> None:
             scalar_items = {k: v for k, v in obj.items() if not isinstance(v, dict)}
             nested_items = {k: v for k, v in obj.items() if isinstance(v, dict)}
 
             if path:
-                header = ".".join(path)
+                header = ".".join(escape_jinja_literal(str(p)) for p in path)
                 lines.append(f"[{header}]")
 
             for key, val in scalar_items.items():
@@ -130,10 +137,14 @@ class TomlHandler(DictLikeHandler):
         def emit_kv(path: tuple[str, ...], key: str, value: Any) -> None:
             var_name = self.make_var_name(role_prefix, path + (key,))
             if isinstance(value, str):
-                lines.append(f"{key} = {self._toml_quoted_expr(var_name)}")
+                lines.append(
+                    f"{escape_jinja_literal(str(key))} = {self._toml_quoted_expr(var_name)}"
+                )
             elif isinstance(value, bool):
                 # Booleans need | lower filter (Python True/False → TOML true/false)
-                lines.append(f"{key} = {self._toml_value_expr(var_name, value)}")
+                lines.append(
+                    f"{escape_jinja_literal(str(key))} = {self._toml_value_expr(var_name, value)}"
+                )
             elif isinstance(value, list):
                 # Check if this list is a loop candidate
                 if path + (key,) in loop_paths:
@@ -157,19 +168,26 @@ class TomlHandler(DictLikeHandler):
                     elif candidate.item_schema in ("simple_dict", "nested"):
                         # Dict list loop - TOML array of tables
                         # This is complex for TOML, using simplified approach
-                        lines.append(f"{key} = " f"{j2.to_json(var_name)}")
+                        lines.append(
+                            f"{escape_jinja_literal(str(key))} = "
+                            f"{j2.to_json(var_name)}"
+                        )
                 else:
                     # Not a loop, treat as regular variable
-                    lines.append(f"{key} = {self._toml_value_expr(var_name, value)}")
+                    lines.append(
+                        f"{escape_jinja_literal(str(key))} = {self._toml_value_expr(var_name, value)}"
+                    )
             else:
-                lines.append(f"{key} = {self._toml_value_expr(var_name, value)}")
+                lines.append(
+                    f"{escape_jinja_literal(str(key))} = {self._toml_value_expr(var_name, value)}"
+                )
 
         def walk(obj: dict[str, Any], path: tuple[str, ...] = ()) -> None:
             scalar_items = {k: v for k, v in obj.items() if not isinstance(v, dict)}
             nested_items = {k: v for k, v in obj.items() if isinstance(v, dict)}
 
             if path:
-                header = ".".join(path)
+                header = ".".join(escape_jinja_literal(str(p)) for p in path)
                 lines.append(f"[{header}]")
 
             for key, val in scalar_items.items():
@@ -217,7 +235,7 @@ class TomlHandler(DictLikeHandler):
 
             # Blank or pure comment
             if not stripped or stripped.startswith("#"):
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             # Table header: [server] or [server.tls] or [[array.of.tables]]
@@ -230,7 +248,7 @@ class TomlHandler(DictLikeHandler):
                     inner = inner.strip("[]")  # handle [[table]] as well
                     parts = [p.strip() for p in inner.split(".") if p.strip()]
                     current_table = tuple(parts)
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             # Try key = value
@@ -245,7 +263,7 @@ class TomlHandler(DictLikeHandler):
 
             eq_index = content.find("=")
             if eq_index == -1:
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             before_eq = content[:eq_index]
@@ -253,7 +271,7 @@ class TomlHandler(DictLikeHandler):
 
             key = before_eq.strip()
             if not key:
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             # Whitespace after '='
@@ -289,19 +307,23 @@ class TomlHandler(DictLikeHandler):
                         nested_var = self.make_var_name(role_prefix, nested_path)
                         if isinstance(sub_val, str):
                             inner_bits.append(
-                                f"{sub_key} = {self._toml_quoted_expr(nested_var)}"
+                                f"{escape_jinja_literal(str(sub_key))} = {self._toml_quoted_expr(nested_var)}"
                             )
                         elif isinstance(sub_val, bool):
                             inner_bits.append(
-                                f"{sub_key} = {self._toml_value_expr(nested_var, sub_val)}"
+                                f"{escape_jinja_literal(str(sub_key))} = {self._toml_value_expr(nested_var, sub_val)}"
                             )
                         else:
                             inner_bits.append(
-                                f"{sub_key} = {self._toml_value_expr(nested_var, sub_val)}"
+                                f"{escape_jinja_literal(str(sub_key))} = {self._toml_value_expr(nested_var, sub_val)}"
                             )
                     replacement_value = "{ " + ", ".join(inner_bits) + " }"
                     new_content = (
-                        before_eq + "=" + leading_ws + replacement_value + comment_part
+                        escape_jinja_literal(before_eq)
+                        + "="
+                        + leading_ws
+                        + replacement_value
+                        + escape_jinja_literal(comment_part)
                     )
                     out_lines.append(new_content + newline)
                     continue
@@ -327,7 +349,11 @@ class TomlHandler(DictLikeHandler):
                 replacement_value = j2.variable(var_name)
 
             new_content = (
-                before_eq + "=" + leading_ws + replacement_value + comment_part
+                escape_jinja_literal(before_eq)
+                + "="
+                + leading_ws
+                + replacement_value
+                + escape_jinja_literal(comment_part)
             )
             out_lines.append(new_content + newline)
 
@@ -355,7 +381,7 @@ class TomlHandler(DictLikeHandler):
             if not stripped or stripped.startswith("#"):
                 # Only output if we're not skipping
                 if not skip_until_next_table:
-                    out_lines.append(raw_line)
+                    out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             # Table header: [server] or [server.tls] or [[array.of.tables]]
@@ -404,7 +430,9 @@ class TomlHandler(DictLikeHandler):
                             out_lines.append(
                                 f"{j2.for_start(item_var, collection_var)}\n"
                             )
-                            out_lines.append(f"[[{'.'.join(table_path)}]]\n")
+                            out_lines.append(
+                                f"[[{'.'.join(escape_jinja_literal(str(p)) for p in table_path)}]]\n"
+                            )
 
                             # Add fields from sample item
                             for key, value in sample_item.items():
@@ -412,17 +440,17 @@ class TomlHandler(DictLikeHandler):
                                     continue
                                 if isinstance(value, str):
                                     out_lines.append(
-                                        f"{key} = "
+                                        f"{escape_jinja_literal(str(key))} = "
                                         f"{self._toml_quoted_expr(f'{item_var}.{key}')}\n"
                                     )
                                 elif isinstance(value, bool):
                                     out_lines.append(
-                                        f"{key} = "
+                                        f"{escape_jinja_literal(str(key))} = "
                                         f"{self._toml_value_expr(f'{item_var}.{key}', value)}\n"
                                     )
                                 else:
                                     out_lines.append(
-                                        f"{key} = "
+                                        f"{escape_jinja_literal(str(key))} = "
                                         f"{self._toml_value_expr(f'{item_var}.{key}', value)}\n"
                                     )
 
@@ -437,7 +465,7 @@ class TomlHandler(DictLikeHandler):
                             skip_until_next_table = False
                         current_table = table_path
 
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             # If we're inside a skipped array-of-tables section, skip this line
@@ -456,7 +484,7 @@ class TomlHandler(DictLikeHandler):
 
             eq_index = content.find("=")
             if eq_index == -1:
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             before_eq = content[:eq_index]
@@ -464,7 +492,7 @@ class TomlHandler(DictLikeHandler):
 
             key = before_eq.strip()
             if not key:
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             # Whitespace after '='
@@ -501,7 +529,11 @@ class TomlHandler(DictLikeHandler):
                     replacement_value = j2.to_json(collection_var)
 
                 new_content = (
-                    before_eq + "=" + leading_ws + replacement_value + comment_part
+                    escape_jinja_literal(before_eq)
+                    + "="
+                    + leading_ws
+                    + replacement_value
+                    + escape_jinja_literal(comment_part)
                 )
                 out_lines.append(new_content + newline)
                 continue
@@ -526,19 +558,23 @@ class TomlHandler(DictLikeHandler):
                         nested_var = self.make_var_name(role_prefix, nested_path)
                         if isinstance(sub_val, str):
                             inner_bits.append(
-                                f"{sub_key} = {self._toml_quoted_expr(nested_var)}"
+                                f"{escape_jinja_literal(str(sub_key))} = {self._toml_quoted_expr(nested_var)}"
                             )
                         elif isinstance(sub_val, bool):
                             inner_bits.append(
-                                f"{sub_key} = {self._toml_value_expr(nested_var, sub_val)}"
+                                f"{escape_jinja_literal(str(sub_key))} = {self._toml_value_expr(nested_var, sub_val)}"
                             )
                         else:
                             inner_bits.append(
-                                f"{sub_key} = {self._toml_value_expr(nested_var, sub_val)}"
+                                f"{escape_jinja_literal(str(sub_key))} = {self._toml_value_expr(nested_var, sub_val)}"
                             )
                     replacement_value = "{ " + ", ".join(inner_bits) + " }"
                     new_content = (
-                        before_eq + "=" + leading_ws + replacement_value + comment_part
+                        escape_jinja_literal(before_eq)
+                        + "="
+                        + leading_ws
+                        + replacement_value
+                        + escape_jinja_literal(comment_part)
                     )
                     out_lines.append(new_content + newline)
                     continue
@@ -564,7 +600,11 @@ class TomlHandler(DictLikeHandler):
                 replacement_value = j2.variable(var_name)
 
             new_content = (
-                before_eq + "=" + leading_ws + replacement_value + comment_part
+                escape_jinja_literal(before_eq)
+                + "="
+                + leading_ws
+                + replacement_value
+                + escape_jinja_literal(comment_part)
             )
             out_lines.append(new_content + newline)
 

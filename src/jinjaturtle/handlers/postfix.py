@@ -5,6 +5,7 @@ from typing import Any
 
 from . import BaseHandler
 from .. import j2
+from ..escape import escape_jinja_literal
 
 
 class PostfixMainHandler(BaseHandler):
@@ -108,16 +109,16 @@ class PostfixMainHandler(BaseHandler):
 
             stripped = content.strip()
             if not stripped:
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 i += 1
                 continue
             if stripped.startswith("#"):
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 i += 1
                 continue
 
             if "=" not in content:
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 i += 1
                 continue
 
@@ -127,7 +128,7 @@ class PostfixMainHandler(BaseHandler):
 
             key = before_eq.strip()
             if not key:
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 i += 1
                 continue
 
@@ -162,16 +163,21 @@ class PostfixMainHandler(BaseHandler):
 
             var = self.make_var_name(role_prefix, (key,))
             v = value
+            # ``before_eq`` (key) and ``comment_part`` are source-derived and may
+            # contain template metacharacters; escape each around the safe
+            # placeholder.
+            safe_before = escape_jinja_literal(before_eq)
+            safe_comment = escape_jinja_literal(comment_part)
             quoted = len(v) >= 2 and v[0] == v[-1] and v[0] in {'"', "'"}
             if quoted:
                 replacement = (
-                    f"{before_eq}={leading_ws}{j2.quoted_variable(var)}"
-                    f"{comment_part}{newline}"
+                    f"{safe_before}={leading_ws}{j2.quoted_variable(var)}"
+                    f"{safe_comment}{newline}"
                 )
             else:
                 replacement = (
-                    f"{before_eq}={leading_ws}{j2.variable(var)}"
-                    f"{comment_part}{newline}"
+                    f"{safe_before}={leading_ws}{j2.variable(var)}"
+                    f"{safe_comment}{newline}"
                 )
 
             out_lines.append(replacement)

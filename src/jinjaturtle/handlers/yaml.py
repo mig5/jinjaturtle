@@ -6,6 +6,7 @@ from typing import Any
 
 from .dict import DictLikeHandler
 from .. import j2
+from ..escape import escape_jinja_literal
 from ..loop_analyzer import LoopCandidate
 
 
@@ -102,7 +103,7 @@ class YamlHandler(DictLikeHandler):
             indent = len(raw_line) - len(stripped)
 
             if not stripped or stripped.startswith("#"):
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             while stack and indent < stack[-1][0]:
@@ -112,7 +113,7 @@ class YamlHandler(DictLikeHandler):
                 key_part, rest = stripped.split(":", 1)
                 key = key_part.strip()
                 if not key:
-                    out_lines.append(raw_line)
+                    out_lines.append(escape_jinja_literal(raw_line))
                     continue
 
                 rest_stripped = rest.lstrip(" \t")
@@ -125,7 +126,7 @@ class YamlHandler(DictLikeHandler):
                 stack.append((indent, path, "map"))
 
                 if not has_value:
-                    out_lines.append(raw_line)
+                    out_lines.append(escape_jinja_literal(raw_line))
                     continue
 
                 value_part, comment_part = self._split_inline_comment(
@@ -147,8 +148,8 @@ class YamlHandler(DictLikeHandler):
                     replacement = self._yaml_scalar_expr(var_name, raw_value)
 
                 leading = rest[: len(rest) - len(rest.lstrip(" \t"))]
-                new_rest = f"{leading}{replacement}{comment_part}"
-                new_stripped = f"{key}:{new_rest}"
+                new_rest = f"{leading}{replacement}{escape_jinja_literal(comment_part)}"
+                new_stripped = f"{escape_jinja_literal(key)}:{new_rest}"
                 out_lines.append(
                     " " * indent
                     + new_stripped
@@ -185,7 +186,7 @@ class YamlHandler(DictLikeHandler):
                 else:
                     replacement = self._yaml_scalar_expr(var_name, raw_value)
 
-                new_stripped = f"- {replacement}{comment_part}"
+                new_stripped = f"- {replacement}{escape_jinja_literal(comment_part)}"
                 out_lines.append(
                     " " * indent
                     + new_stripped
@@ -193,7 +194,7 @@ class YamlHandler(DictLikeHandler):
                 )
                 continue
 
-            out_lines.append(raw_line)
+            out_lines.append(escape_jinja_literal(raw_line))
 
         return "".join(out_lines)
 
@@ -275,7 +276,7 @@ class YamlHandler(DictLikeHandler):
                     next_line = next_significant_line(line_index)
                     if next_line is None:
                         skip_until_indent = None
-                        out_lines.append(raw_line)
+                        out_lines.append(escape_jinja_literal(raw_line))
                     else:
                         next_indent, next_stripped = next_line
                         still_in_collection = next_indent > skip_until_indent or (
@@ -284,12 +285,12 @@ class YamlHandler(DictLikeHandler):
                         )
                         if not still_in_collection:
                             skip_until_indent = None
-                            out_lines.append(raw_line)
+                            out_lines.append(escape_jinja_literal(raw_line))
                     continue
                 if is_comment:
                     if indent <= skip_until_indent:
                         skip_until_indent = None
-                        out_lines.append(raw_line)
+                        out_lines.append(escape_jinja_literal(raw_line))
                     # Comments/blank lines indented beneath the replaced
                     # collection are considered part of that collection and
                     # cannot be placed safely inside a generated loop.
@@ -303,7 +304,7 @@ class YamlHandler(DictLikeHandler):
 
             # Blank or comment lines
             if is_blank or is_comment:
-                out_lines.append(raw_line)
+                out_lines.append(escape_jinja_literal(raw_line))
                 continue
 
             # Adjust stack based on indent
@@ -315,7 +316,7 @@ class YamlHandler(DictLikeHandler):
                 key_part, rest = stripped.split(":", 1)
                 key = key_part.strip()
                 if not key:
-                    out_lines.append(raw_line)
+                    out_lines.append(escape_jinja_literal(raw_line))
                     continue
 
                 rest_stripped = rest.lstrip(" \t")
@@ -353,7 +354,7 @@ class YamlHandler(DictLikeHandler):
                     continue
 
                 if not has_value:
-                    out_lines.append(raw_line)
+                    out_lines.append(escape_jinja_literal(raw_line))
                     continue
 
                 # Scalar value - replace with variable
@@ -376,8 +377,8 @@ class YamlHandler(DictLikeHandler):
                     replacement = self._yaml_scalar_expr(var_name, raw_value)
 
                 leading = rest[: len(rest) - len(rest.lstrip(" \t"))]
-                new_rest = f"{leading}{replacement}{comment_part}"
-                new_stripped = f"{key}:{new_rest}"
+                new_rest = f"{leading}{replacement}{escape_jinja_literal(comment_part)}"
+                new_stripped = f"{escape_jinja_literal(key)}:{new_rest}"
                 out_lines.append(
                     " " * indent
                     + new_stripped
@@ -439,7 +440,7 @@ class YamlHandler(DictLikeHandler):
                 else:
                     replacement = self._yaml_scalar_expr(var_name, raw_value)
 
-                new_stripped = f"- {replacement}{comment_part}"
+                new_stripped = f"- {replacement}{escape_jinja_literal(comment_part)}"
                 out_lines.append(
                     " " * indent
                     + new_stripped
@@ -447,7 +448,7 @@ class YamlHandler(DictLikeHandler):
                 )
                 continue
 
-            out_lines.append(raw_line)
+            out_lines.append(escape_jinja_literal(raw_line))
 
         return "".join(out_lines)
 
@@ -480,7 +481,7 @@ class YamlHandler(DictLikeHandler):
         lines: list[str] = []
         if not is_list:
             key = candidate.path[-1] if candidate.path else "items"
-            lines.append(f"{indent_str}{key}:")
+            lines.append(f"{indent_str}{escape_jinja_literal(str(key))}:")
 
         item_lines: list[str] = []
         if candidate.items:
@@ -549,12 +550,16 @@ class YamlHandler(DictLikeHandler):
             if first_key and is_list_item:
                 # First key gets the list marker
                 value_expr = self._yaml_value_expr(f"{loop_var}.{key}", value)
-                lines.append(f"{indent_str}- {key}: {value_expr}")
+                lines.append(
+                    f"{indent_str}- {escape_jinja_literal(str(key))}: {value_expr}"
+                )
                 first_key = False
             else:
                 # Subsequent keys are indented
                 sub_indent = indent + 2 if is_list_item else indent
                 value_expr = self._yaml_value_expr(f"{loop_var}.{key}", value)
-                lines.append(f"{' ' * sub_indent}{key}: {value_expr}")
+                lines.append(
+                    f"{' ' * sub_indent}{escape_jinja_literal(str(key))}: {value_expr}"
+                )
 
         return lines

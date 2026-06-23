@@ -6,6 +6,7 @@ from typing import Any
 
 from . import BaseHandler
 from .. import j2
+from ..escape import escape_jinja_literal
 
 
 @dataclass
@@ -157,7 +158,13 @@ class SystemdUnitHandler(BaseHandler):
         out_lines: list[str] = []
         for ln in parsed.lines:
             if ln.kind != "kv" or not ln.section or not ln.key:
-                out_lines.append(ln.raw)
+                # Verbatim lines (blank/comment/section/unrecognised "raw")
+                # originate from the source file.  Escape template
+                # metacharacters so they cannot become live template code.
+                # This is the only handler that emits unrecognised lines, which
+                # is where Jinja *statement* injection (``{% ... %}``) was
+                # possible, so escaping here is essential.
+                out_lines.append(escape_jinja_literal(ln.raw))
                 continue
 
             path: tuple[str, ...] = (ln.section, ln.key)
@@ -166,16 +173,18 @@ class SystemdUnitHandler(BaseHandler):
             var = self.make_var_name(role_prefix, path)
 
             v = (ln.value or "").strip()
+            safe_before = escape_jinja_literal(ln.before_eq)
+            safe_comment = escape_jinja_literal(ln.comment)
             quoted = len(v) >= 2 and v[0] == v[-1] and v[0] in {'"', "'"}
             if quoted:
                 repl = (
-                    f"{ln.before_eq}={ln.leading_ws_after_eq}"
-                    f"{j2.quoted_variable(var)}{ln.comment}"
+                    f"{safe_before}={ln.leading_ws_after_eq}"
+                    f"{j2.quoted_variable(var)}{safe_comment}"
                 )
             else:
                 repl = (
-                    f"{ln.before_eq}={ln.leading_ws_after_eq}"
-                    f"{j2.variable(var)}{ln.comment}"
+                    f"{safe_before}={ln.leading_ws_after_eq}"
+                    f"{j2.variable(var)}{safe_comment}"
                 )
 
             newline = "\n" if ln.raw.endswith("\n") else ""
