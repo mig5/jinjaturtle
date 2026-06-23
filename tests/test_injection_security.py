@@ -23,8 +23,11 @@ import jinja2
 import pytest
 import yaml as pyyaml
 
-from jinjaturtle.escape import escape_jinja_literal, escape_erb_literal
-
+from jinjaturtle.escape import (
+    escape_jinja_literal,
+    escape_erb_literal,
+    escape_literal,
+)
 
 TRIP = "__TRIPWIRE_FIRED__"
 
@@ -210,3 +213,24 @@ def test_escape_erb_literal_removes_executable_tags(payload):
         assert "system" not in chunk
         assert "require" not in chunk
         # Numeric/expression payloads must be reduced to literal-string prints.
+
+
+def test_escape_literal_dispatches_by_engine():
+    """The public ``escape_literal`` wrapper routes to the right engine."""
+    payload = "{{ 7*7 }}"
+    # Default engine is Jinja2.
+    assert escape_literal(payload) == escape_jinja_literal(payload)
+    assert escape_literal(payload, engine="jinja2") == escape_jinja_literal(payload)
+    # An unknown engine falls back to the safer Jinja2 escaping.
+    assert escape_literal(payload, engine="nonsense") == escape_jinja_literal(payload)
+    # ERB routing.
+    erb_payload = "<%= system('id') %>"
+    assert escape_literal(erb_payload, engine="erb") == escape_erb_literal(erb_payload)
+
+
+def test_escape_literal_jinja_output_is_inert():
+    """End-to-end: text routed through escape_literal does not execute."""
+    escaped = escape_literal("{{ boom.run('x') }}")
+    env = jinja2.Environment(undefined=jinja2.ChainableUndefined)
+    rendered = env.from_string(escaped).render(boom=_Boom())
+    assert TRIP not in rendered
