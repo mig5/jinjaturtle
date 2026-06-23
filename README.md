@@ -281,11 +281,6 @@ Clone the repo and then run inside the clone:
 poetry install
 ```
 
-### AppImage
-
-Download the AppImage from the Releases page, make it executable, and put it on
-your `$PATH`.
-
 ## Full usage info
 
 ```text

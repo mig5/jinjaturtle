@@ -7,11 +7,6 @@ filedust -y .
 
 # Publish to Pypi
 poetry build
-poetry publish
-
-# Make AppImage
-poetry run pyproject-appimage
-mv JinjaTurtle.AppImage dist/
 
 # Sign packages
 for file in `ls -1 dist/`; do qubes-gpg-client --batch  --armor --detach-sign dist/$file > dist/$file.asc; done
@@ -51,8 +46,8 @@ REPO_ROOT="${HOME}/git/repo_rpm"
 REMOTE="ashpool.mig5.net:/opt/repo_rpm"
 
 DISTS=(
+  fedora:44
   fedora:43
-  fedora:42
 )
 
 for dist in ${DISTS[@]}; do
@@ -86,6 +81,9 @@ for dist in ${DISTS[@]}; do
   echo "==> Signing repomd.xml..."
   qubes-gpg-client --local-user "$KEYID" --detach-sign --armor "$RPM_REPO/repodata/repomd.xml" > "$RPM_REPO/repodata/repomd.xml.asc"
 done
+
+# If we got this far, we can publish to PyPI
+poetry publish
 
 echo "==> Syncing repo to server..."
 rsync -aHPvz --exclude=.git --delete "$REPO_ROOT/" "$REMOTE/"

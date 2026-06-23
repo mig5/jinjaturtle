@@ -61,6 +61,23 @@ rsync -a --delete \
   "${SRC}/" "${WORK}/"
 
 cd "${WORK}"
+
+# This project's pyproject.toml uses the PEP 621 [project] table, which needs
+# poetry-core >= 2.0.  Debian bookworm and Ubuntu jammy/noble ship an older
+# poetry-core that cannot parse it.  On those, swap in the legacy Poetry 1.x
+# formatted metadata (kept in sync at pyproject.poetry1.toml) for the build.
+# trixie and newer ship poetry-core 2.x and keep the PEP 621 file.
+if [ -f pyproject.poetry1.toml ]; then
+  core_ver="$(python3 -c 'import poetry.core as c; print(c.__version__)' 2>/dev/null || echo 0)"
+  core_major="${core_ver%%.*}"
+  if [ "${core_major:-0}" -lt 2 ]; then
+    echo "poetry-core ${core_ver} < 2.0: using legacy pyproject.poetry1.toml"
+    cp pyproject.poetry1.toml pyproject.toml
+  else
+    echo "poetry-core ${core_ver} >= 2.0: using PEP 621 pyproject.toml"
+  fi
+fi
+
 if [ -n "${SUITE:-}" ]; then
   export DEBEMAIL="mig@mig5.net"
   export DEBFULLNAME="Miguel Jacq"
