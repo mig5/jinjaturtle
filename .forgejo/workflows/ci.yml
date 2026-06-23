@@ -7,6 +7,14 @@ jobs:
   test:
     runs-on: docker
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: debian
+            image: docker.io/library/debian:13
+            python: python3
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
