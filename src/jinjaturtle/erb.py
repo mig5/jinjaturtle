@@ -76,7 +76,9 @@ class ErbTranslator:
     # JinjaTurtle emits raw blocks only to carry verbatim, security-escaped
     # source text (comments and unrecognised lines), so the *contents* must be
     # treated as literal output, never translated as Jinja tokens.
-    _RAW_BLOCK_RE = re.compile(r"{%\s*raw\s*%}(.*?){%\s*endraw\s*%}", re.S)
+    _RAW_BLOCK_RE = re.compile(
+        r"{%[-+]?\s*raw\s*[-+]?%}(.*?){%[-+]?\s*endraw\s*[-+]?%}", re.S
+    )
 
     def translate(self, template_text: str) -> str:
         # Split out raw blocks first.  Their inner text is literal and must be

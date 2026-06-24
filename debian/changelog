@@ -1,3 +1,9 @@
+jinjaturtle (0.5.7) unstable; urgency=medium
+
+  * More hardening measures
+
+ -- Miguel Jacq <mig@mig5.net>  Wed, 24 Jun 2026 16:13:00 +1000
+
 jinjaturtle (0.5.6) unstable; urgency=medium
 
   * Try to prevent what could lead to execution of embedded jinja in original files when converting

@@ -17,6 +17,7 @@ from .core import (
 )
 
 from .multi import process_directory
+from .safety import TemplateSafetyError, verify_erb_template_safe
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -76,6 +77,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _main(argv: list[str] | None = None) -> int:
+    try:
+        return _run(argv)
+    except TemplateSafetyError as exc:
+        # The output safety gate refused to emit a template because it contained
+        # a construct JinjaTurtle never produces -- i.e. attacker-influenced
+        # source text became live template code.  Fail closed with a clear
+        # message and a non-zero exit code; never write the unsafe template.
+        print(
+            f"jinjaturtle: refusing to generate unsafe template: {exc}", file=sys.stderr
+        )
+        return 2
+
+
+def _run(argv: list[str] | None = None) -> int:
     defuse_stdlib()
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
@@ -107,6 +122,7 @@ def _main(argv: list[str] | None = None) -> int:
                     role_prefix=args.role_name,
                     puppet_class=args.puppet_class or args.role_name,
                 )
+                verify_erb_template_safe(o.template)
 
         template_ext = "erb" if args.template_engine == "erb" else j2.TEMPLATE_EXTENSION
 

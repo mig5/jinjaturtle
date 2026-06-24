@@ -165,6 +165,18 @@ SSTI_PAYLOADS = [
     "text {% endraw %} breakout {{ evil }}",
     "nested {%  endraw  %} spacing {{ evil }}",
     "{%- endraw -%}{{ evil }}",
+    # Whitespace-control markers: Jinja2 accepts "-", "+" or none adjacent to a
+    # tag's delimiters, and every variant closes a {% raw %} block.  The "+"
+    # forms in particular were a raw-wrapper breakout vector (the defang regex
+    # historically only matched "-"), so all combinations must be neutralised.
+    "{%+ endraw %}{{ evil }}",
+    "{% endraw +%}{{ evil }}",
+    "{%+ endraw +%}{{ evil }}",
+    "{%- endraw +%}{{ evil }}",
+    "{%+ endraw -%}{{ evil }}",
+    # Full breakout attempt: close raw early, inject live code, re-open raw to
+    # swallow our trailing {% endraw %} so the template would otherwise compile.
+    "{%+ endraw %}{{ evil }}{%+ raw %}",
     "mixed {{ a }} and {% b %} and {# c #}",
     "}}{{ orphan delimiters %}{%",
 ]
@@ -194,6 +206,33 @@ def test_escape_jinja_literal_actually_blocks_execution():
     # Sanity: the *unescaped* payload would have fired the tripwire.
     fired = env.from_string(payload).render(boom=_Boom())
     assert TRIP in fired
+
+
+@pytest.mark.parametrize(
+    "endraw",
+    [
+        "{% endraw %}",
+        "{% endraw -%}",
+        "{% endraw +%}",
+        "{%- endraw %}",
+        "{%- endraw -%}",
+        "{%- endraw +%}",
+        "{%+ endraw %}",
+        "{%+ endraw -%}",
+        "{%+ endraw +%}",
+    ],
+)
+def test_endraw_whitespace_control_cannot_break_out(endraw):
+    """Every whitespace-control form of endraw closes a {% raw %} block in
+    Jinja2, so each must be defanged.  A payload that closes raw early, injects
+    a live tripwire call, then re-opens raw to balance the wrapper must still
+    render inertly back to its original characters."""
+    env = jinja2.Environment(undefined=jinja2.ChainableUndefined)
+    payload = f"{endraw}{{{{ boom.run('x') }}}}{{%+ raw %}}"
+    escaped = escape_jinja_literal(payload)
+    rendered = env.from_string(escaped).render(boom=_Boom())
+    assert TRIP not in rendered
+    assert rendered == payload
 
 
 @pytest.mark.parametrize(

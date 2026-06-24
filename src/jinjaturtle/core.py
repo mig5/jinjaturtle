@@ -9,6 +9,10 @@ import yaml
 
 from .loop_analyzer import LoopAnalyzer, LoopCandidate
 from .erb import puppet_class_name, puppet_local_var_name, translate_jinja2_to_erb
+from .safety import (
+    verify_erb_template_safe,
+    verify_jinja2_template_safe,
+)
 from .handlers import (
     BaseHandler,
     IniHandler,
@@ -378,14 +382,21 @@ def generate_jinja2_template(
 
     # Check if handler supports loop-aware generation
     if hasattr(handler, "generate_jinja2_template_with_loops") and loop_candidates:
-        return handler.generate_jinja2_template_with_loops(
+        template = handler.generate_jinja2_template_with_loops(
             parsed, role_prefix, original_text, loop_candidates
         )
+    else:
+        # Fallback to original scalar-only generation
+        template = handler.generate_jinja2_template(
+            parsed, role_prefix, original_text=original_text
+        )
 
-    # Fallback to original scalar-only generation
-    return handler.generate_jinja2_template(
-        parsed, role_prefix, original_text=original_text
-    )
+    # Defence in depth: independently verify that the finished template contains
+    # only JinjaTurtle-emitted constructs.  If any handler failed to neutralise
+    # verbatim source text, the un-escaped payload shows up here as a live tag
+    # and generation aborts instead of emitting an injectable template.
+    verify_jinja2_template_safe(template)
+    return template
 
 
 def _template_variable_names(
@@ -457,12 +468,15 @@ def generate_erb_template(
         loop_candidates=loop_candidates,
     )
     names = _template_variable_names(role_prefix, flat_items or [], loop_candidates)
-    return translate_jinja2_to_erb(
+    erb_template = translate_jinja2_to_erb(
         jinja_template,
         role_prefix=role_prefix,
         puppet_class=puppet_class or role_prefix,
         variable_names=names,
     )
+    # Defence in depth: no live Jinja2 delimiter may survive translation.
+    verify_erb_template_safe(erb_template)
+    return erb_template
 
 
 def _stringify_timestamps(obj: Any) -> Any:

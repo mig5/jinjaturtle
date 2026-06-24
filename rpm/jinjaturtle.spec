@@ -1,4 +1,4 @@
-%global upstream_version 0.5.6
+%global upstream_version 0.5.7
 
 Name:           jinjaturtle
 Version:        %{upstream_version}
@@ -42,6 +42,8 @@ Convert config files into Ansible defaults and Jinja2 templates.
 %{_bindir}/jinjaturtle
 
 %changelog
+* Wed Jun 24 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
+- More hardening
 * Tue Jun 23 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
 - Try to prevent what could lead to execution of embedded jinja in original files when converting
 * Sat Jun 20 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
@@ -55,7 +57,7 @@ Convert config files into Ansible defaults and Jinja2 templates.
 - Fix indentation problems with nested dicts
 * Fri Jun 19 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
 - Empty dicts and lists are now emitted as leaf defaults.
-* Tue May 11 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
+* Mon May 11 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
 - Support ssh configs
 * Tue Jan 06 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
 - Support converting systemd files and postfix main.cf

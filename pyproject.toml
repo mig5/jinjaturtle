@@ -1,6 +1,6 @@
 [project]
 name = "jinjaturtle"
-version = "0.5.6"
+version = "0.5.7"
 description = "Convert config files into Ansible defaults and Jinja2 templates."
 authors = [
     { name = "Miguel Jacq", email = "mig@mig5.net" },

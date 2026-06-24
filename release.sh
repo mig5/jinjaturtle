@@ -46,7 +46,6 @@ REPO_ROOT="${HOME}/git/repo_rpm"
 REMOTE="ashpool.mig5.net:/opt/repo_rpm"
 
 DISTS=(
-  fedora:44
   fedora:43
 )
 

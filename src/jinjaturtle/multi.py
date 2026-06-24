@@ -31,6 +31,8 @@ import xml.etree.ElementTree as ET  # nosec
 from . import j2
 from .core import dump_yaml, flatten_config, make_var_name, parse_config
 from .handlers.xml import XmlHandler
+from .safety import verify_jinja2_template_safe
+from .escape import escape_jinja_literal
 
 
 SUPPORTED_SUFFIXES: dict[str, set[str]] = {
@@ -160,6 +162,11 @@ def _yaml_render_union(
     if isinstance(union_obj, dict):
         for key, val in union_obj.items():
             key_path = path + (str(key),)
+            # The key text is copied verbatim into the template; escape it so an
+            # attacker-influenced key (e.g. ``{{ 7*7 }}``) cannot become live
+            # template code.  ``key_path`` (used only to build sanitised var
+            # names) keeps the original key.
+            safe_key = escape_jinja_literal(str(key))
             cond_var = (
                 defined_var_name(role_prefix, key_path)
                 if key_path in optional_containers
@@ -170,13 +177,13 @@ def _yaml_render_union(
                 value = _yaml_scalar_placeholder(role_prefix, key_path, val)
                 if cond_var:
                     lines.append(f"{ind}{j2.if_defined(cond_var)}")
-                lines.append(f"{ind}{key}: {value}")
+                lines.append(f"{ind}{safe_key}: {value}")
                 if cond_var:
                     lines.append(f"{ind}{j2.endif()}")
             else:
                 if cond_var:
                     lines.append(f"{ind}{j2.if_defined(cond_var)}")
-                lines.append(f"{ind}{key}:")
+                lines.append(f"{ind}{safe_key}:")
                 lines.extend(
                     _yaml_render_union(
                         role_prefix,
@@ -214,6 +221,7 @@ def _yaml_render_union(
                 first = True
                 for k, v in item.items():
                     kp = item_path + (str(k),)
+                    safe_k = escape_jinja_literal(str(k))
                     k_cond = (
                         defined_var_name(role_prefix, kp)
                         if kp in optional_containers
@@ -224,14 +232,14 @@ def _yaml_render_union(
                         if first:
                             if k_cond:
                                 lines.append(f"{ind}{j2.if_defined(k_cond)}")
-                            lines.append(f"{ind}- {k}: {value}")
+                            lines.append(f"{ind}- {safe_k}: {value}")
                             if k_cond:
                                 lines.append(f"{ind}{j2.endif()}")
                             first = False
                         else:
                             if k_cond:
                                 lines.append(f"{ind}  {j2.if_defined(k_cond)}")
-                            lines.append(f"{ind}  {k}: {value}")
+                            lines.append(f"{ind}  {safe_k}: {value}")
                             if k_cond:
                                 lines.append(f"{ind}  {j2.endif()}")
                     else:
@@ -239,7 +247,7 @@ def _yaml_render_union(
                         if first:
                             if k_cond:
                                 lines.append(f"{ind}{j2.if_defined(k_cond)}")
-                            lines.append(f"{ind}- {k}:")
+                            lines.append(f"{ind}- {safe_k}:")
                             lines.extend(
                                 _yaml_render_union(
                                     role_prefix,
@@ -255,7 +263,7 @@ def _yaml_render_union(
                         else:
                             if k_cond:
                                 lines.append(f"{ind}  {j2.if_defined(k_cond)}")
-                            lines.append(f"{ind}  {k}:")
+                            lines.append(f"{ind}  {safe_k}:")
                             lines.extend(
                                 _yaml_render_union(
                                     role_prefix,
@@ -301,6 +309,7 @@ def _toml_render_union(
 
     def emit_kv(path: tuple[str, ...], key: str, value: Any) -> None:
         var_name = make_var_name(role_prefix, path + (key,))
+        safe_key = escape_jinja_literal(str(key))
         cond = (
             defined_var_name(role_prefix, path + (key,))
             if (path + (key,)) in optional_containers
@@ -309,11 +318,11 @@ def _toml_render_union(
         if cond:
             lines.append(f"{j2.if_defined(cond)}")
         if isinstance(value, str):
-            lines.append(f"{key} = {j2.quoted_variable(var_name)}")
+            lines.append(f"{safe_key} = {j2.quoted_variable(var_name)}")
         elif isinstance(value, bool):
-            lines.append(f"{key} = {j2.lower(var_name)}")
+            lines.append(f"{safe_key} = {j2.lower(var_name)}")
         else:
-            lines.append(f"{key} = {j2.variable(var_name)}")
+            lines.append(f"{safe_key} = {j2.variable(var_name)}")
         if cond:
             lines.append(j2.endif())
 
@@ -326,7 +335,7 @@ def _toml_render_union(
             )
             if cond:
                 lines.append(f"{j2.if_defined(cond)}")
-            lines.append(f"[{'.'.join(path)}]")
+            lines.append(f"[{'.'.join(escape_jinja_literal(str(p)) for p in path)}]")
 
         scalar_items = {k: v for k, v in obj.items() if not isinstance(v, dict)}
         nested_items = {k: v for k, v in obj.items() if isinstance(v, dict)}
@@ -412,10 +421,11 @@ def _ini_render_union(
         )
         if sec_cond:
             lines.append(f"{j2.if_defined(sec_cond)}")
-        lines.append(f"[{section}]")
+        lines.append(f"[{escape_jinja_literal(str(section))}]")
         for key, raw_val in union.items(section, raw=True):
             path = (section, key)
             var = make_var_name(role_prefix, path)
+            safe_key = escape_jinja_literal(str(key))
             key_cond = (
                 defined_var_name(role_prefix, path) if path in optional_keys else None
             )
@@ -424,9 +434,9 @@ def _ini_render_union(
             if key_cond:
                 lines.append(f"{j2.if_defined(key_cond)}")
             if quoted:
-                lines.append(f"{key} = {j2.quoted_variable(var)}")
+                lines.append(f"{safe_key} = {j2.quoted_variable(var)}")
             else:
-                lines.append(f"{key} = {j2.variable(var)}")
+                lines.append(f"{safe_key} = {j2.variable(var)}")
             if key_cond:
                 lines.append(j2.endif())
         lines.append("")
@@ -768,5 +778,11 @@ def process_directory(
     for out in outputs:
         defaults_doc[out.list_var] = out.items
     defaults_yaml = dump_yaml(defaults_doc, sort_keys=True)
+
+    # Defence in depth: folder-mode union templates are built by their own
+    # renderers (not core.generate_jinja2_template), so gate each one here too.
+    # Any un-neutralised source text that became a live tag aborts generation.
+    for out in outputs:
+        verify_jinja2_template_safe(out.template)
 
     return defaults_yaml, outputs

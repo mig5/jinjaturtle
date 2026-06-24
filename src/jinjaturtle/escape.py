@@ -50,9 +50,14 @@ _JINJA_MARKERS = ("{{", "}}", "{%", "%}", "{#", "#}")
 _ERB_OPEN_MARKERS = ("<%=", "<%-", "<%#", "<%")
 _ERB_CLOSE_MARKERS = ("-%>", "%>")
 
-# Matches a Jinja2 endraw tag in any internal spacing, e.g. "{%endraw%}",
-# "{%  endraw  %}", "{%- endraw -%}".
-_ENDRAW_RE = re.compile(r"{%-?\s*endraw\s*-?%}")
+# Matches a Jinja2 endraw tag in any internal spacing and with any
+# whitespace-control marker on either side.  Jinja2 accepts "-", "+", or no
+# marker adjacent to the "%}"/"{%" of a block tag (e.g. "{%endraw%}",
+# "{%  endraw  %}", "{%- endraw -%}", "{%+ endraw +%}"), and ALL of these close
+# a raw block.  The control marker must be matched so a "{%+ endraw %}" in
+# attacker-influenced source text cannot survive defanging and break out of our
+# {% raw %} wrapper.  [-+]? appears on both sides accordingly.
+_ENDRAW_RE = re.compile(r"{%[-+]?\s*endraw\s*[-+]?%}")
 
 # Sentinel inserted between "end" and "raw" to break the endraw keyword without
 # changing the visible characters.  We use a Jinja comment-free approach: insert
