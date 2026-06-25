@@ -8,9 +8,7 @@ import re
 import yaml
 
 from .loop_analyzer import LoopAnalyzer, LoopCandidate
-from .erb import puppet_class_name, puppet_local_var_name, translate_jinja2_to_erb
 from .safety import (
-    verify_erb_template_safe,
     verify_jinja2_template_safe,
 )
 from .handlers import (
@@ -409,74 +407,6 @@ def _template_variable_names(
         for candidate in loop_candidates:
             names.add(make_var_name(role_prefix, candidate.path))
     return names
-
-
-def generate_puppet_hiera_yaml(
-    role_prefix: str,
-    flat_items: list[tuple[tuple[str, ...], Any]],
-    loop_candidates: list[LoopCandidate] | None = None,
-    *,
-    puppet_class: str | None = None,
-) -> str:
-    """Create Puppet Hiera data suitable for Automatic Parameter Lookup.
-
-    ``role_prefix`` remains the source variable prefix used by JinjaTurtle while
-    ``puppet_class`` is the Puppet class/Hiera namespace.  In the normal case
-    they are the same, so ``php_memory_limit`` becomes ``php::memory_limit``.
-    """
-
-    klass = puppet_class_name(puppet_class or role_prefix)
-    data: dict[str, Any] = {}
-
-    for path, value in flat_items:
-        generated = make_var_name(role_prefix, path)
-        local = puppet_local_var_name(role_prefix, generated, puppet_class=klass)
-        data[f"{klass}::{local}"] = value
-
-    if loop_candidates:
-        for candidate in loop_candidates:
-            generated = make_var_name(role_prefix, candidate.path)
-            local = puppet_local_var_name(role_prefix, generated, puppet_class=klass)
-            data[f"{klass}::{local}"] = candidate.items
-
-    return dump_yaml(data, sort_keys=True)
-
-
-def generate_erb_template(
-    fmt: str,
-    parsed: Any,
-    role_prefix: str,
-    *,
-    original_text: str | None = None,
-    loop_candidates: list[LoopCandidate] | None = None,
-    flat_items: list[tuple[tuple[str, ...], Any]] | None = None,
-    puppet_class: str | None = None,
-) -> str:
-    """Generate a Puppet ERB template from JinjaTurtle's renderer-neutral data.
-
-    The first implementation intentionally translates the Jinja2 subset emitted
-    by JinjaTurtle's existing format handlers.  This keeps parsing, formatting
-    preservation, and loop detection identical between Jinja2 and ERB output
-    while still producing Puppet-native ``@parameter`` references.
-    """
-
-    jinja_template = generate_jinja2_template(
-        fmt,
-        parsed,
-        role_prefix,
-        original_text=original_text,
-        loop_candidates=loop_candidates,
-    )
-    names = _template_variable_names(role_prefix, flat_items or [], loop_candidates)
-    erb_template = translate_jinja2_to_erb(
-        jinja_template,
-        role_prefix=role_prefix,
-        puppet_class=puppet_class or role_prefix,
-        variable_names=names,
-    )
-    # Defence in depth: no live Jinja2 delimiter may survive translation.
-    verify_erb_template_safe(erb_template)
-    return erb_template
 
 
 def _stringify_timestamps(obj: Any) -> Any:

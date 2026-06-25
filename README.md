@@ -13,9 +13,6 @@ By default it generates:
 - an **Ansible defaults YAML** file containing the variables used by that
   template.
 
-It can also generate **ERB** templates and **Puppet Hiera-style YAML** data for
-Puppet workflows.
-
 JinjaTurtle does not try to replace configuration-management tools. Its job is
 to speed up the boring first pass: take a real config file, discover the values
 inside it, replace those values with variables, and write the corresponding
@@ -36,16 +33,6 @@ For the default Jinja2/Ansible mode:
    expressions.
 5. An Ansible defaults YAML file is generated with those variables and the
    original values.
-
-For ERB/Puppet mode:
-
-1. The same parse/flatten/loop analysis is used.
-2. An ERB template is generated with Puppet-style instance variables such as
-   `<%= @memory_limit %>`.
-3. The variables file is written as Puppet Hiera-style data, such as
-   `php::memory_limit: 256M`.
-4. If `--puppet-class` is supplied, that class name is used as the Hiera
-   namespace while `--role-name` remains the local variable prefix.
 
 By default, the generated variable data and template are printed to stdout. Use
 `--defaults-output` and `--template-output` to write them to files.
@@ -80,78 +67,6 @@ and defaults data like:
 php_memory_limit: 256M
 ```
 
-## ERB / Puppet example
-
-Use `--template-engine erb` when you want Puppet ERB output:
-
-```shell
-jinjaturtle php.ini \
-  --role-name php \
-  --template-engine erb \
-  --defaults-output data/common.yaml \
-  --template-output templates/php.ini.erb
-```
-
-Given the same source value:
-
-```ini
-memory_limit = 256M
-```
-
-JinjaTurtle will produce an ERB template value like:
-
-```erb
-memory_limit = <%= @memory_limit %>
-```
-
-and Hiera-style data like:
-
-```yaml
-php::memory_limit: 256M
-```
-
-The `--defaults-output` option name is retained for CLI compatibility, but in
-ERB mode the file is intended to be Puppet Hiera data rather than Ansible role
-defaults.
-
-JinjaTurtle does **not** generate Puppet classes or `file` resources. A Puppet
-module, should still declare the class parameters and call the template, for
-example with Puppet's `template()` function.
-
-## Using `--puppet-class`
-
-Most direct usage can simply use the same value for the role name and Puppet
-class name:
-
-```shell
-jinjaturtle php.ini --role-name php --template-engine erb
-```
-
-This creates Hiera keys such as:
-
-```yaml
-php::memory_limit: 256M
-```
-
-and local ERB variables such as:
-
-```erb
-<%= @memory_limit %>
-```
-
-For generated systems, it can be useful to make `--role-name` more specific
-while keeping the Hiera keys under the real Puppet class. For example:
-
-```shell
-jinjaturtle php.ini \
-  --role-name php_etc_php_ini \
-  --puppet-class php \
-  --template-engine erb
-```
-
-In that case the variable prefix can stay file-specific, while the Hiera data
-is still written under `php::...`.
-
 ## What sort of config files can it handle?
 
 JinjaTurtle supports common structured and semi-structured config formats:
@@ -176,8 +91,8 @@ homogeneous enough. If it is not confident, it falls back to flattened scalar
 variables.
 
 Some very complex files will still need manual cleanup. The goal is to speed up
-conversion into Jinja2 or ERB templates, not to guarantee a perfect final module
-without review.
+conversion into Jinja2 templates, not to guarantee a perfect final module without
+review.
 
 ## JSON, quoting, and type preservation
 
@@ -196,17 +111,7 @@ when the correct rendered JSON should be:
 {"enabled": true}
 ```
 
-In Jinja2 mode this uses Ansible-style JSON filters. In ERB mode it emits Ruby
-JSON generation where required, for example:
-
-```erb
-<% require 'json' -%>
-{
-  "enabled": <%= JSON.generate(@enabled) %>
-}
-```
-
-That is expected for JSON ERB templates.
+This uses Ansible-style JSON filters.
 
 ## Can I convert multiple files at once?
 
@@ -287,8 +192,6 @@ poetry install
 usage: jinjaturtle [-h] [-r ROLE_NAME] [--recursive]
                    [-f {ini,json,toml,yaml,xml,postfix,systemd,ssh}]
                    [-d DEFAULTS_OUTPUT] [-t TEMPLATE_OUTPUT]
-                   [--template-engine {jinja2,erb}]
-                   [--puppet-class PUPPET_CLASS]
                    config
 
 Convert a config file into an Ansible defaults file and Jinja2 template.
@@ -302,8 +205,7 @@ options:
   -h, --help            show this help message and exit
   -r, --role-name ROLE_NAME
                         Role name / variable prefix. In Jinja2 mode this is
-                        usually the Ansible role name. In ERB mode it is used
-                        as the local variable prefix. Defaults to jinjaturtle.
+                        usually the Ansible role name. Defaults to jinjaturtle.
   --recursive           When CONFIG is a folder, recurse into subfolders.
   -f, --format {ini,json,toml,yaml,xml,postfix,systemd,ssh}
                         Force config format instead of auto-detecting from
@@ -314,12 +216,6 @@ options:
   -t, --template-output TEMPLATE_OUTPUT
                         Path to write the generated config template. If omitted,
                         it is printed to stdout.
-  --template-engine {jinja2,erb}
-                        Template syntax to generate. Defaults to jinja2. Use
-                        erb for Puppet templates.
-  --puppet-class PUPPET_CLASS
-                        Puppet class / Hiera namespace to use with
-                        --template-engine erb. Defaults to --role-name.
 ```
 
 ## Additional supported formats
@@ -346,16 +242,16 @@ Two guarantees matter:
 
 1. **Values are data, never code.** Every config *value* is replaced with a
    `{{ variable }}` placeholder in the template, and the original value is stored
-   separately in the defaults/Hiera data. When the template is later rendered,
+   separately in the defaults data. When the template is later rendered,
    the placeholder prints the value as a literal string; Jinja2 does not
    recursively render the *contents* of a variable, so a payload sitting inside
-   a value (for example `motd = {{ salt['cmd.run']('id') }}`) is inert.
+   a value is inert.
 
 2. **Verbatim text is neutralised.** To preserve formatting, JinjaTurtle copies
    comments, blank lines, headers and any unrecognised lines from the source
    into the template. Any template metacharacters in that copied text
-   (`{{ }}`, `{% %}`, `{# #}` for Jinja2; `<% %>` for ERB) are escaped so they
-   render as the literal characters the author wrote, rather than executing.
+   (`{{ }}`, `{% %}`, `{# #}` ) are escaped so they render as the literal
+   characters the author wrote, rather than executing.
 
 ### Consumer responsibilities
 
@@ -368,11 +264,6 @@ which is the normal case:
   default. If you build your own var structures from this data and pass them
   through additional templating, mark untrusted values with the `!unsafe` tag so
   they are never re-evaluated.
-- **Salt**: use the generated file as a `file.managed` template
-  (`template: jinja`). Do **not** place JinjaTurtle output where Salt would
-  render it a second time as part of SLS/pillar rendering, which is a separate
-  Jinja pass and would re-evaluate any embedded expressions.
-- **Puppet/ERB**: render with the standard `template()`/`epp()` flow.
 
 In short: render JinjaTurtle output exactly once. Do not feed it back through
 another templating pass.

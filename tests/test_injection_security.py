@@ -3,8 +3,8 @@
 JinjaTurtle copies parts of the source config (comments, unrecognised lines,
 structural keys) verbatim into the generated template.  If that text contains
 Jinja2/ERB delimiters it must be neutralised, otherwise attacker-influenced
-config content becomes live template code that executes when Salt/Ansible/Puppet
-later renders the template.
+config content becomes live template code that executes when Ansible later
+renders the template.
 
 These tests render the *generated* template the way a downstream tool would and
 assert that an injected payload never executes.  A tripwire object is exposed
@@ -14,7 +14,6 @@ the tripwire sentinel, an injected expression executed and the test fails.
 
 from __future__ import annotations
 
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -25,8 +24,6 @@ import yaml as pyyaml
 
 from jinjaturtle.escape import (
     escape_jinja_literal,
-    escape_erb_literal,
-    escape_literal,
 )
 
 TRIP = "__TRIPWIRE_FIRED__"
@@ -233,43 +230,3 @@ def test_endraw_whitespace_control_cannot_break_out(endraw):
     rendered = env.from_string(escaped).render(boom=_Boom())
     assert TRIP not in rendered
     assert rendered == payload
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [
-        "<%= system('id') %>",
-        "<% require 'open3' %>",
-        "text <%= 1+1 %> more",
-        "-%> orphan <%",
-    ],
-)
-def test_escape_erb_literal_removes_executable_tags(payload):
-    escaped = escape_erb_literal(payload)
-    # No raw executable ERB tag should survive that contains the original code.
-    live = re.findall(r"<%[-=#]?(.*?)-?%>", escaped, re.S)
-    for chunk in live:
-        assert "system" not in chunk
-        assert "require" not in chunk
-        # Numeric/expression payloads must be reduced to literal-string prints.
-
-
-def test_escape_literal_dispatches_by_engine():
-    """The public ``escape_literal`` wrapper routes to the right engine."""
-    payload = "{{ 7*7 }}"
-    # Default engine is Jinja2.
-    assert escape_literal(payload) == escape_jinja_literal(payload)
-    assert escape_literal(payload, engine="jinja2") == escape_jinja_literal(payload)
-    # An unknown engine falls back to the safer Jinja2 escaping.
-    assert escape_literal(payload, engine="nonsense") == escape_jinja_literal(payload)
-    # ERB routing.
-    erb_payload = "<%= system('id') %>"
-    assert escape_literal(erb_payload, engine="erb") == escape_erb_literal(erb_payload)
-
-
-def test_escape_literal_jinja_output_is_inert():
-    """End-to-end: text routed through escape_literal does not execute."""
-    escaped = escape_literal("{{ boom.run('x') }}")
-    env = jinja2.Environment(undefined=jinja2.ChainableUndefined)
-    rendered = env.from_string(escaped).render(boom=_Boom())
-    assert TRIP not in rendered

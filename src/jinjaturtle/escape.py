@@ -9,7 +9,7 @@ always replaced with ``{{ var }}`` placeholders and parked in the defaults data,
 so a payload inside a value is inert.  Verbatim text is different: if the source
 contains ``{{ ... }}``, ``{% ... %}`` or ``{# ... #}`` (Jinja2), or ``<%= %>`` /
 ``<% %>`` (ERB), that text becomes *live template code* in the output and is
-executed when Salt/Ansible/Puppet later renders the template.
+executed when Ansible later renders the template.
 
 Because JinjaTurtle is frequently fed harvested, attacker-influenceable config
 (hostnames, banners, GECOS-derived comments, "Managed by" notes), this is a
@@ -30,14 +30,6 @@ Design notes:
     Jinja construct.  The only way to break out of a raw block is a literal
     ``{% endraw %}`` in the source, so we defang the token ``endraw`` (in any
     internal spacing) before wrapping.
-  * The ERB translator (``erb.py``) is raw-aware: it copies the *contents* of a
-    JinjaTurtle raw block through as literal ERB text and re-escapes any ERB
-    delimiters found there.  That keeps a Jinja-escaped comment inert after the
-    Jinja2 -> ERB translation step, instead of the payload being "re-animated"
-    as ERB.
-  * ``escape_erb_literal`` exists for completeness / direct ERB emission: it
-    rewrites each ERB delimiter into an ERB expression that prints the delimiter
-    characters literally.
 """
 
 import re
@@ -68,11 +60,6 @@ _ENDRAW_RE = re.compile(r"{%[-+]?\s*endraw\s*[-+]?%}")
 def contains_jinja_markup(text: str) -> bool:
     """Return True if *text* contains any Jinja2 delimiter."""
     return any(m in text for m in _JINJA_MARKERS)
-
-
-def contains_erb_markup(text: str) -> bool:
-    """Return True if *text* contains any ERB delimiter."""
-    return any(m in text for m in (*_ERB_OPEN_MARKERS, *_ERB_CLOSE_MARKERS))
 
 
 def _defang_endraw(text: str) -> str:
@@ -109,45 +96,3 @@ def escape_jinja_literal(text: str) -> str:
     if not text or not contains_jinja_markup(text):
         return text
     return "{% raw %}" + _defang_endraw(text) + "{% endraw %}"
-
-
-def escape_erb_literal(text: str) -> str:
-    """Make *text* render as literal characters under a later ERB render.
-
-    ERB has no ``raw`` block, so each opening/closing delimiter is rewritten as
-    an ERB expression that prints the delimiter literally.  Text with no ERB
-    metacharacters is returned unchanged.
-    """
-    if not text or not contains_erb_markup(text):
-        return text
-
-    result: list[str] = []
-    i = 0
-    n = len(text)
-    while i < n:
-        matched = None
-        for marker in (*_ERB_CLOSE_MARKERS, *_ERB_OPEN_MARKERS):
-            if text.startswith(marker, i):
-                matched = marker
-                break
-        if matched is not None:
-            escaped = matched.replace("\\", "\\\\").replace('"', '\\"')
-            result.append('<%= "' + escaped + '" %>')
-            i += len(matched)
-        else:
-            result.append(text[i])
-            i += 1
-    return "".join(result)
-
-
-def escape_literal(text: str, *, engine: str = "jinja2") -> str:
-    """Escape verbatim *text* for the target template *engine*.
-
-    ``engine`` is ``"jinja2"`` (default) or ``"erb"``.  Unknown engines fall back
-    to Jinja2 escaping.  In JinjaTurtle's pipeline ERB output is produced by
-    translating Jinja2 output, and the translator is raw-aware, so handlers can
-    always Jinja-escape and rely on the translator to keep the literal inert.
-    """
-    if engine == "erb":
-        return escape_erb_literal(text)
-    return escape_jinja_literal(text)

@@ -12,12 +12,10 @@ from .core import (
     flatten_config,
     generate_ansible_yaml,
     generate_jinja2_template,
-    generate_puppet_hiera_yaml,
-    generate_erb_template,
 )
 
 from .multi import process_directory
-from .safety import TemplateSafetyError, verify_erb_template_safe
+from .safety import TemplateSafetyError
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -59,20 +57,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--template-output",
         help="Path to write the generated config template. If omitted, template is printed to stdout.",
     )
-    ap.add_argument(
-        "--template-engine",
-        choices=[j2.NAME, "erb"],
-        default=j2.NAME,
-        help="Template syntax to generate (default: jinja2). Use erb for Puppet templates.",
-    )
-    ap.add_argument(
-        "--puppet-class",
-        help=(
-            "Puppet class/Hiera namespace to use with --template-engine erb. "
-            "Defaults to --role-name. This lets tools use a file-specific "
-            "variable prefix while writing Hiera keys under the real Puppet class."
-        ),
-    )
     return ap
 
 
@@ -110,21 +94,7 @@ def _run(argv: list[str] | None = None) -> int:
             print("# defaults/main.yml")
             print(defaults_yaml, end="")
 
-        # Optionally translate folder-mode templates to ERB.  Folder mode keeps
-        # the existing data shape; single-file mode below is the preferred
-        # Puppet path because it can produce class-parameter Hiera keys.
-        if args.template_engine == "erb":
-            from .erb import translate_jinja2_to_erb
-
-            for o in outputs:
-                o.template = translate_jinja2_to_erb(
-                    o.template,
-                    role_prefix=args.role_name,
-                    puppet_class=args.puppet_class or args.role_name,
-                )
-                verify_erb_template_safe(o.template)
-
-        template_ext = "erb" if args.template_engine == "erb" else j2.TEMPLATE_EXTENSION
+        template_ext = j2.TEMPLATE_EXTENSION
 
         # Write templates
         if args.template_output:
@@ -161,36 +131,17 @@ def _run(argv: list[str] | None = None) -> int:
     # Flatten config (excluding loop paths if loops are detected)
     flat_items = flatten_config(fmt, parsed, loop_candidates)
 
-    if args.template_engine == "erb":
-        ansible_yaml = generate_puppet_hiera_yaml(
-            args.role_name,
-            flat_items,
-            loop_candidates,
-            puppet_class=args.puppet_class or args.role_name,
-        )
-        template_str = generate_erb_template(
-            fmt,
-            parsed,
-            args.role_name,
-            original_text=config_text,
-            loop_candidates=loop_candidates,
-            flat_items=flat_items,
-            puppet_class=args.puppet_class or args.role_name,
-        )
-    else:
-        # Generate defaults YAML (with loop collections if detected)
-        ansible_yaml = generate_ansible_yaml(
-            args.role_name, flat_items, loop_candidates
-        )
+    # Generate defaults YAML (with loop collections if detected)
+    ansible_yaml = generate_ansible_yaml(args.role_name, flat_items, loop_candidates)
 
-        # Generate template (with loops if detected)
-        template_str = generate_jinja2_template(
-            fmt,
-            parsed,
-            args.role_name,
-            original_text=config_text,
-            loop_candidates=loop_candidates,
-        )
+    # Generate template (with loops if detected)
+    template_str = generate_jinja2_template(
+        fmt,
+        parsed,
+        args.role_name,
+        original_text=config_text,
+        loop_candidates=loop_candidates,
+    )
 
     if args.defaults_output:
         Path(args.defaults_output).write_text(ansible_yaml, encoding="utf-8")
@@ -201,11 +152,7 @@ def _run(argv: list[str] | None = None) -> int:
     if args.template_output:
         Path(args.template_output).write_text(template_str, encoding="utf-8")
     else:
-        print(
-            "# config.erb"
-            if args.template_engine == "erb"
-            else f"# config.{j2.TEMPLATE_EXTENSION}"
-        )
+        print(f"# config.{j2.TEMPLATE_EXTENSION}")
         print(template_str, end="")
 
     return 0

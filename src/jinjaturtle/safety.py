@@ -22,8 +22,8 @@ single global property:
 
 The check is positive/allowlist-based, which is the safe direction: unknown
 constructs are rejected, not ignored.  It runs at the single choke points in
-``core.py`` (``generate_jinja2_template`` / ``generate_erb_template``), so it
-covers every current handler and every future one automatically.
+``core.py`` (``generate_jinja2_template``) so it covers every current handler and
+every future one automatically.
 
 Why this is robust against the escaper being wrong
 ---------------------------------------------------

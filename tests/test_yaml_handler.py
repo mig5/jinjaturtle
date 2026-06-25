@@ -10,7 +10,6 @@ from jinjaturtle.core import (
     analyze_loops,
     flatten_config,
     generate_ansible_yaml,
-    generate_erb_template,
     generate_jinja2_template,
 )
 from jinjaturtle.handlers.yaml import YamlHandler
@@ -204,16 +203,6 @@ def test_yaml_loop_preserves_blank_separator_after_list(tmp_path: Path):
         )
         rendered = Template(template).render(**defaults)
         assert rendered_expected in rendered
-
-        erb_template = generate_erb_template(
-            fmt,
-            parsed,
-            "role",
-            original_text=text,
-            loop_candidates=loop_candidates,
-            flat_items=flat_items,
-        )
-        assert erb_expected in erb_template
 
 
 def test_yaml_loop_preserves_following_top_level_comments(tmp_path: Path):
