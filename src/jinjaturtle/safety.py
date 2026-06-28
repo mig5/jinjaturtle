@@ -43,6 +43,7 @@ __all__ = [
     "TemplateSafetyError",
     "verify_jinja2_template_safe",
     "verify_erb_template_safe",
+    "verify_no_live_jinja_in_json_keys",
 ]
 
 
@@ -208,7 +209,88 @@ def verify_jinja2_template_safe(template_text: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# ERB gate.
+# JSON-key gate (defence in depth, format-specific).
+#
+# JinjaTurtle never emits a live Jinja construct inside a JSON *object key*: keys
+# are copied verbatim from the source and (after escape.py) are wrapped in
+# ``{% raw %}`` if they contain markup, so a key never lexes as a live tag.  A
+# live construct in key position can therefore only mean source key text leaked
+# into the template unescaped (the json-handler blind spot).  This gate is
+# independent of the escaper: it inspects the finished template, replaces every
+# *live* Jinja construct with an inert sentinel (raw-wrapped literal text stays
+# literal), and rejects any sentinel that lands in a JSON key slot.
+# --------------------------------------------------------------------------- #
+
+# Sentinel byte that cannot occur in normal generated template text.
+_LIVE_SENTINEL = "\x00"
+
+# A JSON key is a double-quoted string immediately followed (after optional
+# whitespace) by a colon.  We only need to detect a sentinel *inside* such a
+# string, so match a quoted run that ends in `":` and look for the sentinel.
+_JSON_KEY_RE = re.compile(r'"((?:[^"\\]|\\.)*)"\s*:', re.S)
+
+_KEY_JINJA_DELIMS = ("{{", "}}", "{%", "%}", "{#", "#}")
+
+
+def _contains_jinja_delim(text: str) -> bool:
+    """True if *text* contains any Jinja delimiter (live or escaped-literal)."""
+    return any(d in text for d in _KEY_JINJA_DELIMS)
+
+
+def verify_no_live_jinja_in_json_keys(template_text: str) -> None:
+    """Reject a JSON template that carries Jinja markup in an object key.
+
+    JinjaTurtle never templates a JSON *object key*: keys come straight from the
+    source and a key is an identifier/string, never a value placeholder. Any
+    Jinja in key position therefore means attacker-influenced source key text
+    reached the template. This gate fails closed on it, independent of whether a
+    handler left the markup *live* (a raw ``{{ ... }}`` in the key) or *escaped*
+    it into a ``{% raw %}`` wrapper -- both indicate a key that should never have
+    contained templating, so generation aborts rather than emitting it.
+
+    Detection is done on the lexer token stream: we reconstruct the document with
+    every live tag collapsed to a sentinel and every ``{% raw %}``-wrapped region
+    also marked, then reject a sentinel that lands inside a JSON key string.
+    """
+    import jinja2
+
+    env = jinja2.Environment(autoescape=True)
+    try:
+        tokens = list(env.lex(template_text))
+    except jinja2.TemplateSyntaxError as exc:
+        raise TemplateSafetyError(
+            f"generated JSON template does not lex as the JinjaTurtle subset: {exc}"
+        ) from exc
+
+    out: list[str] = []
+    in_tag = False
+    for _lineno, tok_type, value in tokens:
+        if tok_type in ("variable_begin", "block_begin", "comment_begin"):
+            # A live construct: collapse to a sentinel so it is detectable if it
+            # sits in key position. (raw_begin/raw_end are *not* live; the data
+            # inside a raw block is preserved verbatim below, so an escaped key
+            # still shows its literal Jinja delimiters to the key check.)
+            in_tag = True
+            out.append(_LIVE_SENTINEL)
+        elif tok_type in ("variable_end", "block_end", "comment_end"):
+            in_tag = False
+        elif not in_tag:
+            # data, whitespace, raw_begin/raw_end markers, and inert raw content.
+            out.append(value if isinstance(value, str) else str(value))
+
+    reconstructed = "".join(out)
+
+    for match in _JSON_KEY_RE.finditer(reconstructed):
+        key_text = match.group(1)
+        if _LIVE_SENTINEL in key_text or _contains_jinja_delim(key_text):
+            raise TemplateSafetyError(
+                "refusing to emit JSON template: Jinja markup appears inside a "
+                "JSON object key. JinjaTurtle never templates keys, so this "
+                "indicates attacker-influenced source key text (possible "
+                "template injection)."
+            )
+
+
 #
 # JinjaTurtle's ERB output is produced by translating the (already-verified)
 # Jinja2 subset, so the Jinja2 gate is the primary guarantee.  As an independent

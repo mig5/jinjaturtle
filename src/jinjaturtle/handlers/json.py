@@ -7,6 +7,7 @@ from typing import Any
 
 from . import DictLikeHandler
 from .. import j2
+from ..escape import escape_jinja_literal
 from ..loop_analyzer import LoopCandidate
 
 
@@ -109,10 +110,18 @@ class JsonHandler(DictLikeHandler):
         chunks: list[str] = []
         pos = 0
         for path, start, end in spans:
-            chunks.append(text[pos:start])
+            # Text between scalar values (object keys, structural punctuation,
+            # whitespace, and any comment-like trailing text) is copied verbatim
+            # from the source file. Like every other text-emitting handler, this
+            # verbatim text must be neutralised: if it contains Jinja2 markup it
+            # would otherwise become live template code at apply time. The value
+            # itself is replaced with a safe placeholder below. ``escape_jinja_literal``
+            # is a no-op on text without Jinja markers, so benign JSON is unchanged
+            # byte-for-byte and a later render reproduces the original characters.
+            chunks.append(escape_jinja_literal(text[pos:start]))
             chunks.append(self._json_value_expr(self.make_var_name(role_prefix, path)))
             pos = end
-        chunks.append(text[pos:])
+        chunks.append(escape_jinja_literal(text[pos:]))
         return "".join(chunks)
 
     def _collect_json_scalar_spans(
@@ -213,7 +222,12 @@ class JsonHandler(DictLikeHandler):
 
         def _walk(obj: Any, path: tuple[str, ...] = ()) -> Any:
             if isinstance(obj, dict):
-                return {k: _walk(v, path + (str(k),)) for k, v in obj.items()}
+                # Keys are emitted verbatim into the template, so neutralise any
+                # Jinja markup in them (see _generate_json_template_from_text).
+                return {
+                    escape_jinja_literal(str(k)): _walk(v, path + (str(k),))
+                    for k, v in obj.items()
+                }
             if isinstance(obj, list):
                 return [_walk(v, path + (str(i),)) for i, v in enumerate(obj)]
             # scalar - use marker that will be replaced with to_json
@@ -261,7 +275,12 @@ class JsonHandler(DictLikeHandler):
                     return f"__LOOP_DICT__{collection_var}__{item_var}__"
 
             if isinstance(obj, dict):
-                return {k: _walk(v, current_path + (str(k),)) for k, v in obj.items()}
+                # Keys are emitted verbatim into the template, so neutralise any
+                # Jinja markup in them (see _generate_json_template_from_text).
+                return {
+                    escape_jinja_literal(str(k)): _walk(v, current_path + (str(k),))
+                    for k, v in obj.items()
+                }
             if isinstance(obj, list):
                 # Check if this list is a loop candidate
                 if current_path in loop_paths:
@@ -364,8 +383,13 @@ class JsonHandler(DictLikeHandler):
         ]  # first line has no indent; we prepend `inner` when emitting
         for i, key in enumerate(keys):
             comma = "," if i < len(keys) - 1 else ""
+            # The literal key text is emitted verbatim into the template; escape any
+            # Jinja markup in it. The value side ({item_var}.{key}) is constrained by
+            # the output safety gate's dotted-name allowlist, which fails closed on
+            # anything that is not a plain identifier path.
             dict_lines.append(
-                f'{field}"{key}": ' f"{j2.to_json(f'{item_var}.{key}')}{comma}"
+                f'{field}"{escape_jinja_literal(str(key))}": '
+                f"{j2.to_json(f'{item_var}.{key}')}{comma}"
             )
         # Comma between *items* goes after the closing brace.
         dict_lines.append(f"{inner}}}{j2.if_not_loop_last()},{j2.endif()}")

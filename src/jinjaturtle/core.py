@@ -10,6 +10,7 @@ import yaml
 from .loop_analyzer import LoopAnalyzer, LoopCandidate
 from .safety import (
     verify_jinja2_template_safe,
+    verify_no_live_jinja_in_json_keys,
 )
 from .handlers import (
     BaseHandler,
@@ -394,6 +395,13 @@ def generate_jinja2_template(
     # verbatim source text, the un-escaped payload shows up here as a live tag
     # and generation aborts instead of emitting an injectable template.
     verify_jinja2_template_safe(template)
+
+    # Format-specific backstop: JinjaTurtle never emits Jinja inside a JSON object
+    # key, so a live construct in key position means source key text leaked into
+    # the template unescaped. This is independent of per-handler escaping.
+    if fmt == "json":
+        verify_no_live_jinja_in_json_keys(template)
+
     return template
 
 

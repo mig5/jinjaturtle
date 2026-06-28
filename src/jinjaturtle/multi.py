@@ -31,7 +31,7 @@ import xml.etree.ElementTree as ET  # nosec
 from . import j2
 from .core import dump_yaml, flatten_config, make_var_name, parse_config
 from .handlers.xml import XmlHandler
-from .safety import verify_jinja2_template_safe
+from .safety import verify_jinja2_template_safe, verify_no_live_jinja_in_json_keys
 from .escape import escape_jinja_literal
 
 
@@ -784,5 +784,7 @@ def process_directory(
     # Any un-neutralised source text that became a live tag aborts generation.
     for out in outputs:
         verify_jinja2_template_safe(out.template)
+        if out.fmt == "json":
+            verify_no_live_jinja_in_json_keys(out.template)
 
     return defaults_yaml, outputs

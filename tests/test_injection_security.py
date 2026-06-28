@@ -152,6 +152,86 @@ def test_generated_template_is_renderable(tmp_path, fmt, name, body):
     _render_jinja(template_text, defaults)
 
 
+# --- JSON object-key injection ------------------------------------------------
+#
+# The JSON handler copies the text *between* scalar values (object keys,
+# punctuation) verbatim. A key is never a value placeholder, so Jinja markup in a
+# key can only come from attacker-influenced source text. The output gate
+# (verify_no_live_jinja_in_json_keys) must fail closed on it -- including the
+# "benign-looking name" form (e.g. ``{{ ansible_hostname }}``) that the generic
+# allowlist would otherwise accept as an ordinary variable reference, and which
+# could leak an in-scope variable's value into the rendered config at apply time.
+
+JSON_KEY_INJECTION_BODIES = [
+    # benign-looking variable reference (the residual bypass: passes the generic
+    # allowlist but must still be rejected in *key* position)
+    '{ "{{ ansible_hostname }}": "v" }',
+    # dotted reference (e.g. dumping another host's vars)
+    '{ "{{ hostvars.localhost }}": 1 }',
+    # self-referencing a sibling-derived variable name
+    '{ "{{ role_port }}": "x", "port": 8080 }',
+    # classic gadget (already rejected historically; kept as a guard)
+    '{ "{{ cycler.__init__.__globals__ }}": 1 }',
+    # statement injection in a key
+    '{ "{% for x in y %}k{% endfor %}": 1 }',
+    # nested object key
+    '{ "ok": { "{{ ansible_hostname }}": 2 } }',
+]
+
+
+@pytest.mark.parametrize("body", JSON_KEY_INJECTION_BODIES)
+def test_json_key_injection_fails_closed_cli(tmp_path, body):
+    src = tmp_path / "evil.json"
+    src.write_text(body, encoding="utf-8")
+    out = tmp_path / "out.j2"
+    res = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "jinjaturtle.cli",
+            str(src),
+            "-f",
+            "json",
+            "--role-name",
+            "role",
+            "-t",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 2, f"expected fail-closed, got rc={res.returncode}"
+    assert "refusing to generate unsafe template" in res.stderr
+    assert not out.exists(), "no template may be written when the gate refuses"
+
+
+def test_json_benign_keys_still_generate(tmp_path):
+    src = tmp_path / "ok.json"
+    src.write_text('{ "host": "localhost", "port": 8080 }', encoding="utf-8")
+    out = tmp_path / "out.j2"
+    res = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "jinjaturtle.cli",
+            str(src),
+            "-f",
+            "json",
+            "--role-name",
+            "demo",
+            "-t",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0, res.stderr
+    template_text = out.read_text()
+    # Keys stay literal; values become placeholders.
+    assert '"host":' in template_text
+    assert "demo_host" in template_text
+
+
 # --- Unit-level guarantees for the escaper itself ---------------------------
 
 SSTI_PAYLOADS = [
