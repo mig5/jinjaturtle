@@ -22,7 +22,9 @@ Notes:
 
 from collections import Counter, defaultdict
 from copy import deepcopy
+import os
 import configparser
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -44,8 +46,23 @@ SUPPORTED_SUFFIXES: dict[str, set[str]] = {
 }
 
 
+def _lstat(path: Path) -> os.stat_result:
+    return path.lstat()
+
+
 def is_supported_file(path: Path) -> bool:
-    if not path.is_file():
+    """Return True only for real regular files with supported suffixes.
+
+    pathlib.Path.is_file() follows symlinks.  Folder mode must not follow
+    attacker-controlled symlinks when run over an untrusted tree, especially if
+    an administrator accidentally runs the CLI as root.
+    """
+
+    try:
+        st = _lstat(path)
+    except FileNotFoundError:
+        return False
+    if not stat.S_ISREG(st.st_mode):
         return False
     suffix = path.suffix.lower()
     for exts in SUPPORTED_SUFFIXES.values():
@@ -55,11 +72,16 @@ def is_supported_file(path: Path) -> bool:
 
 
 def iter_supported_files(root: Path, recursive: bool) -> list[Path]:
-    if not root.exists():
+    try:
+        st = _lstat(root)
+    except FileNotFoundError:
         raise FileNotFoundError(str(root))
-    if root.is_file():
+
+    if stat.S_ISLNK(st.st_mode):
+        raise ValueError(f"refusing to follow symlink: {root}")
+    if stat.S_ISREG(st.st_mode):
         return [root] if is_supported_file(root) else []
-    if not root.is_dir():
+    if not stat.S_ISDIR(st.st_mode):
         return []
 
     it = root.rglob("*") if recursive else root.glob("*")

@@ -16,6 +16,7 @@ from .core import (
 
 from .multi import process_directory
 from .safety import TemplateSafetyError
+from .output_safety import OutputPathError, ensure_safe_directory, write_text_safely
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -72,6 +73,9 @@ def _main(argv: list[str] | None = None) -> int:
             f"jinjaturtle: refusing to generate unsafe template: {exc}", file=sys.stderr
         )
         return 2
+    except OutputPathError as exc:
+        print(f"jinjaturtle: refusing unsafe output path: {exc}", file=sys.stderr)
+        return 2
 
 
 def _run(argv: list[str] | None = None) -> int:
@@ -89,7 +93,7 @@ def _run(argv: list[str] | None = None) -> int:
 
         # Write defaults
         if args.defaults_output:
-            Path(args.defaults_output).write_text(defaults_yaml, encoding="utf-8")
+            write_text_safely(Path(args.defaults_output), defaults_yaml)
         else:
             print("# defaults/main.yml")
             print(defaults_yaml, end="")
@@ -100,12 +104,12 @@ def _run(argv: list[str] | None = None) -> int:
         if args.template_output:
             out_path = Path(args.template_output)
             if len(outputs) == 1 and not out_path.is_dir():
-                out_path.write_text(outputs[0].template, encoding="utf-8")
+                write_text_safely(out_path, outputs[0].template)
             else:
-                out_path.mkdir(parents=True, exist_ok=True)
+                ensure_safe_directory(out_path)
                 for o in outputs:
-                    (out_path / f"config.{o.fmt}.{template_ext}").write_text(
-                        o.template, encoding="utf-8"
+                    write_text_safely(
+                        out_path / f"config.{o.fmt}.{template_ext}", o.template
                     )
         else:
             for o in outputs:
@@ -144,13 +148,13 @@ def _run(argv: list[str] | None = None) -> int:
     )
 
     if args.defaults_output:
-        Path(args.defaults_output).write_text(ansible_yaml, encoding="utf-8")
+        write_text_safely(Path(args.defaults_output), ansible_yaml)
     else:
         print("# defaults/main.yml")
         print(ansible_yaml, end="")
 
     if args.template_output:
-        Path(args.template_output).write_text(template_str, encoding="utf-8")
+        write_text_safely(Path(args.template_output), template_str)
     else:
         print(f"# config.{j2.TEMPLATE_EXTENSION}")
         print(template_str, end="")

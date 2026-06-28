@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
-import xml.etree.ElementTree as ET  # nosec
+import xml.etree.ElementTree as ET  # nosec B405 - safe trees only; parsing uses defusedxml
+import defusedxml.ElementTree as DET
 
 from .base import BaseHandler
 from .. import j2
@@ -20,11 +21,11 @@ class XmlHandler(BaseHandler):
 
     def parse(self, path: Path) -> ET.Element:
         text = path.read_text(encoding="utf-8")
-        parser = ET.XMLParser(
-            target=ET.TreeBuilder(insert_comments=False)
-        )  # nosec B314
-        parser.feed(text)
-        root = parser.close()
+        # Security must live in the handler, not only in the CLI entry point:
+        # callers may import JinjaTurtle as a library and invoke parse_config()
+        # directly.  defusedxml rejects DTD/entity abuse and also discards
+        # comments by default, matching the previous TreeBuilder behaviour.
+        root = DET.fromstring(text)
         return root
 
     def flatten(self, parsed: Any) -> list[tuple[tuple[str, ...], Any]]:

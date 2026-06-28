@@ -33,6 +33,22 @@ class QuotedString(str):
     pass
 
 
+class AnsibleUnsafeString(str):
+    """Marker type emitted with Ansible's !unsafe YAML tag.
+
+    Ansible recursively templates string values by default.  Source-derived
+    config values that contain Jinja delimiters must therefore be marked
+    unsafe in defaults/main.yml, otherwise a harvested value such as
+    ``{{ lookup('pipe', 'id') }}`` becomes executable on the Ansible
+    controller when the generated role is applied.
+    """
+
+    pass
+
+
+_JINJA_STARTS = ("{{", "{%", "{#")
+
+
 def _fallback_str_representer(dumper: yaml.SafeDumper, data: Any):
     """
     Fallback for objects the dumper doesn't know about.
@@ -52,7 +68,33 @@ def _quoted_str_representer(dumper: yaml.SafeDumper, data: QuotedString):
     return dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style='"')
 
 
+def _ansible_unsafe_str_representer(dumper: yaml.SafeDumper, data: AnsibleUnsafeString):
+    return dumper.represent_scalar("!unsafe", str(data), style="'")
+
+
+def _needs_ansible_unsafe(value: str) -> bool:
+    return any(marker in value for marker in _JINJA_STARTS)
+
+
+def _mark_ansible_unsafe_values(obj: Any) -> Any:
+    """Recursively mark mapping/list values containing Jinja as !unsafe.
+
+    Mapping keys are intentionally left alone: they are variable names or YAML
+    structure, not Ansible-templated values.  Values nested in folder-mode item
+    lists, including source-derived ``id`` values, are protected.
+    """
+
+    if isinstance(obj, dict):
+        return {k: _mark_ansible_unsafe_values(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_mark_ansible_unsafe_values(v) for v in obj]
+    if isinstance(obj, str) and _needs_ansible_unsafe(obj):
+        return AnsibleUnsafeString(obj)
+    return obj
+
+
 _TurtleDumper.add_representer(QuotedString, _quoted_str_representer)
+_TurtleDumper.add_representer(AnsibleUnsafeString, _ansible_unsafe_str_representer)
 # Use our fallback for any unknown object types
 _TurtleDumper.add_representer(None, _fallback_str_representer)
 
@@ -84,8 +126,9 @@ def dump_yaml(data: Any, *, sort_keys: bool = True) -> str:
 
     This is used by both the single-file and multi-file code paths.
     """
+    safe_data = _mark_ansible_unsafe_values(data)
     return yaml.dump(
-        data,
+        safe_data,
         Dumper=_TurtleDumper,
         sort_keys=sort_keys,
         default_flow_style=False,

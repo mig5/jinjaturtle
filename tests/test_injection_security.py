@@ -29,6 +29,21 @@ from jinjaturtle.escape import (
 TRIP = "__TRIPWIRE_FIRED__"
 
 
+class _UnsafeAwareLoader(pyyaml.SafeLoader):
+    pass
+
+
+def _construct_unsafe(loader: _UnsafeAwareLoader, node: pyyaml.Node):
+    return loader.construct_scalar(node)
+
+
+_UnsafeAwareLoader.add_constructor("!unsafe", _construct_unsafe)
+
+
+def _safe_load_defaults(text: str):
+    return pyyaml.load(text, Loader=_UnsafeAwareLoader)
+
+
 class _Boom:
     """Returns the tripwire sentinel for any access/call an SSTI payload makes."""
 
@@ -82,7 +97,7 @@ def _run_jinjaturtle(tmp_path: Path, source_name: str, body: str, fmt: str):
         text=True,
     )
     assert res.returncode == 0, f"generation failed: {res.stderr}"
-    defaults = pyyaml.safe_load(dfl.read_text()) or {}
+    defaults = _safe_load_defaults(dfl.read_text()) or {}
     return tpl.read_text(), defaults
 
 
