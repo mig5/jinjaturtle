@@ -379,7 +379,7 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
         raise
     except _MALFORMED_CONFIG_ERRORS as exc:
         # Normalise the per-parser "this file is malformed" errors into one
-        # type: json.JSONDecodeError / tomllib.TOMLDecodeError (ValueError
+        # json.JSONDecodeError / tomllib.TOMLDecodeError (ValueError
         # subclasses), PyYAML's YAMLError, configparser.Error, and
         # xml.etree.ElementTree.ParseError (raised by defusedxml on XML whose
         # structure/element name is not well-formed). A bad input file is
