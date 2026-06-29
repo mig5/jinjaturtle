@@ -191,3 +191,43 @@ def test_flatten_config_unsupported_format():
         flatten_config("bogusfmt", parsed=None)
 
     assert "Unsupported format" in str(exc.value)
+
+
+def test_make_var_name_collapses_adjacent_separators():
+    """Regression: adjacent separators must not produce a forbidden ``__``.
+
+    A source key such as ``log..level`` or ``cache--size`` previously sanitised
+    to a name containing a double underscore (``..._log__level``). The output
+    safety gate in safety.py rejects *any* ``__`` in a generated identifier
+    (it is the gateway to Jinja2 SSTI gadgets), so emitting one made JinjaTurtle
+    reject its own placeholder and abort generation on entirely benign config.
+    make_var_name now collapses runs of underscores to a single ``_``.
+    """
+    for raw_key in ("log..level", "cache--size", "a...b", "x.-.y", "a..b--c"):
+        name = make_var_name("role", ("main", raw_key))
+        assert "__" not in name, f"{raw_key!r} produced {name!r}"
+        # Still a valid Ansible/Jinja identifier.
+        assert name.replace("_", "").isalnum() or name == "role"
+
+    # The double-underscore-free collapse is stable and predictable.
+    assert make_var_name("role", ("main", "log..level")) == "role_main_log_level"
+    assert make_var_name("role", ("main", "cache--size")) == "role_main_cache_size"
+    # A leading-digit-free prefix with its own repeated separators is collapsed too.
+    assert make_var_name("My__Role", ("k",)) == "my_role_k"
+
+
+def test_make_var_name_collapsed_names_pass_output_safety_gate():
+    """The names make_var_name emits must be accepted by the safety gate.
+
+    This binds the two modules together: whatever identifier make_var_name
+    produces for a hostile-looking key must lex as the JinjaTurtle subset, so a
+    real template built from it is not refused.
+    """
+    from jinjaturtle.safety import verify_jinja2_template_safe
+
+    for raw_key in ("log..level", "cache--size", "a...b", "weird..key..name"):
+        var = make_var_name("demo", ("section", raw_key))
+        # Build the kind of expression a handler would emit for this variable.
+        template = "{{ " + var + " }}"
+        # Must not raise TemplateSafetyError.
+        verify_jinja2_template_safe(template)

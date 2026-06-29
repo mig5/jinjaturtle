@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -57,8 +58,20 @@ class BaseHandler:
           role_prefix_section_subsection_key
 
         Sanitises parts to lowercase [a-z0-9_] and strips extras.
+
+        Consecutive separators are collapsed to a single underscore. This is
+        required for correctness, not just aesthetics: a source key such as
+        ``log..level`` or ``cache--size`` would otherwise sanitise to a name
+        containing a double underscore (``log__level``). The output safety gate
+        in ``safety.py`` deliberately rejects *any* ``__`` in a generated
+        identifier because ``__`` is the gateway to every Jinja2 SSTI gadget
+        (``__class__``/``__globals__``/...). Emitting a dunder here would make
+        JinjaTurtle's own gate reject JinjaTurtle's own placeholder, aborting
+        generation on entirely benign config. Collapsing runs keeps every
+        generated name a plain single-underscore-delimited identifier that the
+        gate accepts.
         """
-        role_prefix = role_prefix.strip().lower()
+        role_prefix = re.sub(r"_+", "_", role_prefix.strip().lower())
         clean_parts: list[str] = []
 
         for part in path:
@@ -70,7 +83,9 @@ class BaseHandler:
                     cleaned_chars.append(c.lower())
                 else:
                     cleaned_chars.append("_")
-            cleaned_part = "".join(cleaned_chars).strip("_")
+            # Collapse runs of underscores (from adjacent separators) to a
+            # single "_" so the result can never contain a forbidden "__".
+            cleaned_part = re.sub(r"_+", "_", "".join(cleaned_chars)).strip("_")
             if cleaned_part:
                 clean_parts.append(cleaned_part)
 
