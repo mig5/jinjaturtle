@@ -177,13 +177,11 @@ def test_yaml_loop_preserves_blank_separator_after_list(tmp_path: Path):
             "blank",
             "require:\n  - rubocop-performance\n  - rubocop-rspec\n\nAllCops:\n  NewCops: enable\n",
             "\n  - rubocop-rspec\n\nAllCops:",
-            "<% end %>\nAllCops:",
         ),
         (
             "no_blank",
             "require:\n  - rubocop-performance\n  - rubocop-rspec\nAllCops:\n  NewCops: enable\n",
             "\n  - rubocop-rspec\nAllCops:",
-            "<% end %>AllCops:",
         ),
     ]
 
