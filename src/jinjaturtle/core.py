@@ -448,18 +448,6 @@ def generate_jinja2_template(
     return template
 
 
-def _template_variable_names(
-    role_prefix: str,
-    flat_items: list[tuple[tuple[str, ...], Any]],
-    loop_candidates: list[LoopCandidate] | None = None,
-) -> set[str]:
-    names = {make_var_name(role_prefix, path) for path, _value in flat_items}
-    if loop_candidates:
-        for candidate in loop_candidates:
-            names.add(make_var_name(role_prefix, candidate.path))
-    return names
-
-
 def _stringify_timestamps(obj: Any) -> Any:
     """
     Recursively walk a parsed config and turn any datetime/date/time objects

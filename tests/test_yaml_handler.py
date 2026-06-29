@@ -187,7 +187,7 @@ def test_yaml_loop_preserves_blank_separator_after_list(tmp_path: Path):
         ),
     ]
 
-    for label, text, rendered_expected, erb_expected in cases:
+    for label, text, rendered_expected in cases:
         path = tmp_path / f"{label}.yml"
         path.write_text(text, encoding="utf-8")
 

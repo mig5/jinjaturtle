@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-NAME = "jinja2"
 TEMPLATE_EXTENSION = "j2"
 JSON_VALUE_FILTER = "to_json(ensure_ascii=False)"
 
