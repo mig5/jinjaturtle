@@ -118,3 +118,19 @@ def test_cli_reports_unsafe_output_path_without_overwriting_symlink(tmp_path: Pa
 
     assert exit_code == 2
     assert target.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_cli_refuses_root_output_through_group_writable_parent(
+    tmp_path: Path, monkeypatch
+):
+    from jinjaturtle import output_safety
+
+    unsafe_dir = tmp_path / "unsafe"
+    unsafe_dir.mkdir()
+    unsafe_dir.chmod(0o777)
+    monkeypatch.setattr(output_safety, "_effective_uid", lambda: 0)
+
+    with pytest.raises(OutputPathError):
+        write_text_safely(unsafe_dir / "out.yml", "data\n")
+
+    assert not (unsafe_dir / "out.yml").exists()
