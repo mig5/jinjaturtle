@@ -12,6 +12,7 @@ from .core import (
     flatten_config,
     generate_ansible_yaml,
     generate_jinja2_template,
+    ConfigParseError,
 )
 
 from .multi import process_directory
@@ -76,6 +77,12 @@ def _main(argv: list[str] | None = None) -> int:
     except OutputPathError as exc:
         print(f"jinjaturtle: refusing unsafe output path: {exc}", file=sys.stderr)
         return 2
+    except ConfigParseError as exc:
+        # The source file could not be parsed as its (detected or forced)
+        # format. This is expected for malformed/attacker-influenced input;
+        # fail cleanly with a non-zero exit code instead of a traceback.
+        print(f"jinjaturtle: {exc}", file=sys.stderr)
+        return 1
 
 
 def _run(argv: list[str] | None = None) -> int:

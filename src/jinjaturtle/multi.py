@@ -25,13 +25,20 @@ from copy import deepcopy
 import os
 import configparser
 import stat
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 import xml.etree.ElementTree as ET  # nosec
 
 from . import j2
-from .core import dump_yaml, flatten_config, make_var_name, parse_config
+from .core import (
+    dump_yaml,
+    flatten_config,
+    make_var_name,
+    parse_config,
+    ConfigParseError,
+)
 from .handlers.xml import XmlHandler
 from .safety import verify_jinja2_template_safe, verify_no_live_jinja_in_json_keys
 from .escape import escape_jinja_literal
@@ -631,7 +638,13 @@ def process_directory(
     # Parse and group by format
     grouped: dict[str, list[tuple[Path, Any]]] = defaultdict(list)
     for p in files:
-        fmt, parsed = parse_config(p, None)
+        try:
+            fmt, parsed = parse_config(p, None)
+        except ConfigParseError as exc:
+            # One malformed file should not abort processing of an entire
+            # directory. Skip it with a warning; the rest still generate.
+            print(f"jinjaturtle: skipping {p}: {exc}", file=sys.stderr)
+            continue
         if fmt not in FOLDER_SUPPORTED_FORMATS:
             # Directory mode only supports a subset of formats for now.
             continue

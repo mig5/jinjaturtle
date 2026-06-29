@@ -305,6 +305,66 @@ def detect_format(path: Path, explicit: str | None = None) -> str:
     return "ini"
 
 
+class ConfigParseError(Exception):
+    """Raised when a source config file cannot be parsed as its format.
+
+    Each underlying parser (json, tomllib, PyYAML, defusedxml/ElementTree,
+    configparser) raises its own exception type on malformed input. Without a
+    single normalised error, a malformed file -- which is entirely expected when
+    JinjaTurtle is pointed at harvested, attacker-influenceable config -- would
+    escape as an unhandled traceback (e.g. ``xml.etree.ElementTree.ParseError``
+    on an XML file whose element name is not well-formed). ``parse_config``
+    converts every such failure into this one type so the CLI can fail closed
+    with a clean message and a non-zero exit code, and so library callers (such
+    as Enroll, which falls back to copying the raw file) have a single, stable
+    exception to catch.
+
+    Note: defusedxml's *security* exceptions (``EntitiesForbidden``,
+    ``DTDForbidden``, ...) are intentionally NOT folded into this type. They
+    signal an attempted XXE/entity-expansion attack rather than a benign
+    malformed file, and must propagate unchanged so callers can tell the two
+    apart.
+    """
+
+
+def _build_malformed_config_errors() -> tuple[type[BaseException], ...]:
+    """Return the concrete "this file is malformed" exception types to catch.
+
+    Deliberately specific. In particular we must avoid catching plain
+    ``ValueError``: defusedxml's ``EntitiesForbidden``/``DTDForbidden`` subclass
+    ``ValueError``, and those are security signals that must NOT be swallowed.
+    """
+
+    import configparser
+    import json
+    from xml.etree.ElementTree import ParseError as _XMLParseError  # nosec
+
+    import yaml as _yaml
+
+    errs: list[type[BaseException]] = [
+        _XMLParseError,
+        json.JSONDecodeError,
+        configparser.Error,
+        _yaml.YAMLError,
+        UnicodeDecodeError,
+    ]
+    try:
+        import tomllib
+
+        errs.append(tomllib.TOMLDecodeError)
+    except ModuleNotFoundError:  # pragma: no cover - Python < 3.11 fallback
+        try:
+            import tomli  # type: ignore
+
+            errs.append(tomli.TOMLDecodeError)
+        except ModuleNotFoundError:
+            pass
+    return tuple(errs)
+
+
+_MALFORMED_CONFIG_ERRORS = _build_malformed_config_errors()
+
+
 def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
     """
     Parse config file into a Python object.
@@ -313,7 +373,24 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
     handler = _HANDLERS.get(fmt)
     if handler is None:
         raise ValueError(f"Unsupported config format: {fmt}")
-    parsed = handler.parse(path)
+    try:
+        parsed = handler.parse(path)
+    except ConfigParseError:
+        raise
+    except _MALFORMED_CONFIG_ERRORS as exc:
+        # Normalise the per-parser "this file is malformed" errors into one
+        # type: json.JSONDecodeError / tomllib.TOMLDecodeError (ValueError
+        # subclasses), PyYAML's YAMLError, configparser.Error, and
+        # xml.etree.ElementTree.ParseError (raised by defusedxml on XML whose
+        # structure/element name is not well-formed). A bad input file is
+        # expected when parsing harvested config, so fail closed with a clean
+        # error instead of an unhandled traceback.
+        #
+        # IMPORTANT: this deliberately does NOT catch defusedxml's security
+        # exceptions (EntitiesForbidden, DTDForbidden, ...). Those signal an
+        # attempted XXE/entity-expansion attack and must propagate unchanged so
+        # callers (and tests) can distinguish "malformed" from "malicious".
+        raise ConfigParseError(f"could not parse {path} as {fmt}: {exc}") from exc
     # Make sure datetime objects are treated as strings (TOML, YAML)
     parsed = _stringify_timestamps(parsed)
 
