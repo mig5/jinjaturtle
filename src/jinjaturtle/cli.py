@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from defusedxml import defuse_stdlib
+from defusedxml.common import DefusedXmlException
 from pathlib import Path
 
 from . import j2
@@ -76,6 +77,20 @@ def _main(argv: list[str] | None = None) -> int:
         return 2
     except OutputPathError as exc:
         print(f"jinjaturtle: refusing unsafe output path: {exc}", file=sys.stderr)
+        return 2
+    except DefusedXmlException as exc:
+        # defusedxml rejected the XML because it attempted a DTD, entity
+        # expansion, or external reference (XXE / billion-laughs class attack).
+        # This is a deliberately-blocked attack, not a benign malformed file, so
+        # core.parse_config lets it propagate unchanged rather than folding it
+        # into ConfigParseError. Report it as a refused unsafe input with a
+        # non-zero exit code instead of leaking an internal traceback.
+        print(
+            "jinjaturtle: refusing unsafe XML input: the document uses a DTD, "
+            f"entity expansion, or external reference ({exc.__class__.__name__}). "
+            "This is blocked to prevent XXE / entity-expansion attacks.",
+            file=sys.stderr,
+        )
         return 2
     except ConfigParseError as exc:
         # The source file could not be parsed as its (detected or forced)

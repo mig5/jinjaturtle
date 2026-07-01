@@ -106,6 +106,47 @@ def test_cli_fails_cleanly_on_malformed_xml(tmp_path: Path) -> None:
     assert "Traceback (most recent call last)" not in res.stderr
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        # Classic XXE: external SYSTEM entity used to read a local file.
+        (
+            '<?xml version="1.0"?>\n'
+            '<!DOCTYPE root [<!ENTITY xxe SYSTEM "file:///etc/hostname">]>\n'
+            "<root>&xxe;</root>\n"
+        ),
+        # Billion-laughs style internal entity expansion.
+        (
+            '<?xml version="1.0"?>\n'
+            '<!DOCTYPE lolz [<!ENTITY lol "lol"><!ENTITY lol2 "&lol;&lol;&lol;">]>\n'
+            "<lolz>&lol2;</lolz>\n"
+        ),
+        # External parameter entity (SSRF / out-of-band XXE vector).
+        (
+            '<?xml version="1.0"?>\n'
+            '<!DOCTYPE root [<!ENTITY % ext SYSTEM "http://127.0.0.1:9/x.dtd"> %ext;]>\n'
+            "<root>x</root>\n"
+        ),
+    ],
+)
+def test_cli_refuses_xxe_cleanly(tmp_path: Path, content: str) -> None:
+    """defusedxml's security refusal must surface as a clean non-zero exit.
+
+    ``EntitiesForbidden``/``DTDForbidden``/``ExternalReferenceForbidden`` subclass
+    ``DefusedXmlException`` (and ``ValueError``). ``parse_config`` deliberately
+    lets them propagate rather than folding them into ``ConfigParseError`` so a
+    blocked attack stays distinguishable from a benign malformed file. The CLI
+    must therefore catch ``DefusedXmlException`` itself and exit cleanly instead
+    of leaking a Python traceback.
+    """
+    src = tmp_path / "xxe.xml"
+    src.write_text(content, encoding="utf-8")
+    res = _run_cli([str(src), "-f", "xml", "-r", "demo"])
+    assert res.returncode == 2
+    assert "refusing unsafe XML input" in res.stderr
+    assert "Traceback (most recent call last)" not in res.stderr
+
+
 def test_folder_mode_skips_unparseable_file(tmp_path: Path) -> None:
     """One malformed file should not abort processing of the whole directory."""
     from jinjaturtle.multi import process_directory
