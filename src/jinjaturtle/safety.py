@@ -152,6 +152,13 @@ _FORBIDDEN_REFERENCE_HEADS = frozenset(
         "request",
         "get_flashed_messages",
         "url_for",
+        # Ansible global set
+        "lookup",
+        "q",
+        "query",
+        "now",
+        "omit",
+        "undef",
     }
 )
 
