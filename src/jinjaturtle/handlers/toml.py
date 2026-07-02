@@ -6,7 +6,7 @@ from typing import Any
 from . import DictLikeHandler
 from .. import j2
 from ..escape import escape_jinja_literal
-from ..loop_analyzer import LoopCandidate
+from ..loop_analyzer import LoopCandidate, is_safe_loop_field_key
 
 try:
     import tomllib
@@ -438,6 +438,18 @@ class TomlHandler(DictLikeHandler):
                             for key, value in sample_item.items():
                                 if key == "_key":
                                     continue
+                                # Defence in depth: the loop analyzer refuses a
+                                # dict-loop whose items contain a non-identifier
+                                # key, so ``key`` is always a plain identifier
+                                # here. Never interpolate a raw key into an
+                                # ``item_var.key`` reference: a key such as
+                                # ``a }}{{ x`` would break out of the placeholder
+                                # and inject a live construct.
+                                if not is_safe_loop_field_key(key):
+                                    raise ValueError(
+                                        "refusing to emit loop-item field "
+                                        f"reference for unsafe key: {key!r}"
+                                    )
                                 if isinstance(value, str):
                                     out_lines.append(
                                         f"{escape_jinja_literal(str(key))} = "

@@ -7,8 +7,32 @@ instead of flattened scalar variables.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from typing import Any, Literal
+
+
+# A dict-loop emits per-item field references of the form ``loopvar.<field>``.
+# ``<field>`` is derived from a source key, which is attacker-influenceable when
+# JinjaTurtle is fed harvested config. The output-safety gate only accepts a
+# reference whose every hop matches this identifier class, so a key must reduce
+# to exactly this shape before it can be used as a loop-item field. Anything else
+# (a key containing ``}}``, quotes, ``.``, ``__``, ...) must not be turned into a
+# loop; the caller falls back to scalar generation, where every value goes through
+# make_var_name() and all verbatim text is escaped.
+_SAFE_LOOP_FIELD_RE = re.compile(r"(?!\w*__)[A-Za-z_][A-Za-z0-9_]*\Z")
+
+
+def is_safe_loop_field_key(key: Any) -> bool:
+    """Return True if *key* is safe to emit as a ``loopvar.<key>`` field access.
+
+    The check mirrors the output-safety gate's identifier class (single
+    identifier, no double underscore). A key that does not match cannot be
+    expressed as a dotted loop-item reference without risking template
+    injection, so a loop candidate containing such a key is rejected upstream.
+    """
+
+    return bool(_SAFE_LOOP_FIELD_RE.match(str(key)))
 
 
 class LoopCandidate:
@@ -264,6 +288,19 @@ class LoopAnalyzer:
 
         if not dicts:
             return "heterogeneous"
+
+        # Security: a dict-loop emits ``loopvar.<key>`` field references. If any
+        # item key is not a plain identifier, it cannot be expressed safely as a
+        # dotted reference (a key such as ``a }}{{ x`` would break out of the
+        # placeholder and inject a live construct). Refuse the loop so the caller
+        # falls back to scalar generation, which escapes all verbatim text and
+        # routes every value through make_var_name().
+        for d in dicts:
+            for k in d.keys():
+                if k == "_key":
+                    continue
+                if not is_safe_loop_field_key(k):
+                    return "heterogeneous"
 
         # Get key sets from each dict
         key_sets = [set(d.keys()) for d in dicts]

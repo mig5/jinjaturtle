@@ -132,13 +132,51 @@ def _strip_ws_control(body: str) -> str:
     return body.strip()
 
 
+# Built-in Jinja2/Ansible globals that JinjaTurtle never emits as a reference
+# head. The allowlist grammar necessarily accepts any bare identifier (it cannot
+# tell an injected global from a legitimate generated variable), so these names
+# are rejected explicitly: their presence as the head of a live reference means
+# source text leaked into a live construct. This is a targeted backstop and does
+# not replace the grammar check.
+_FORBIDDEN_REFERENCE_HEADS = frozenset(
+    {
+        "range",
+        "dict",
+        "lipsum",
+        "cycler",
+        "joiner",
+        "namespace",
+        "config",
+        "self",
+        "cycle",
+        "request",
+        "get_flashed_messages",
+        "url_for",
+    }
+)
+
+
+def _reference_head(body: str) -> str:
+    """Return the leading identifier (before any dot/filter) of an expression."""
+    body = _strip_ws_control(body)
+    m = re.match(r"[A-Za-z_][A-Za-z0-9_]*", body)
+    return m.group(0) if m else ""
+
+
 def _expr_is_allowed(body: str) -> bool:
     body = _strip_ws_control(body)
+    if _reference_head(body) in _FORBIDDEN_REFERENCE_HEADS:
+        return False
     return any(p.match(body) for p in _EXPR_PATTERNS)
 
 
 def _stmt_is_allowed(body: str) -> bool:
     body = _strip_ws_control(body)
+    # A ``for ... in <collection>`` whose collection is a forbidden global is
+    # rejected for the same reason as an expression head.
+    m = re.match(r"for\s+[A-Za-z_]\w*\s+in\s+([A-Za-z_][A-Za-z0-9_]*)", body)
+    if m and m.group(1) in _FORBIDDEN_REFERENCE_HEADS:
+        return False
     return any(p.match(body) for p in _STMT_PATTERNS)
 
 

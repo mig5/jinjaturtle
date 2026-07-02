@@ -7,6 +7,7 @@ from typing import Any
 from .dict import DictLikeHandler
 from .. import j2
 from ..escape import escape_jinja_literal
+from ..loop_analyzer import is_safe_loop_field_key
 from ..loop_analyzer import LoopCandidate
 
 
@@ -546,6 +547,18 @@ class YamlHandler(DictLikeHandler):
             if key == "_key":
                 # Special key for dict collections - output as comment or skip
                 continue
+
+            # Defence in depth: the loop analyzer already refuses a dict-loop
+            # whose items contain a non-identifier key (see _analyze_dict_schema),
+            # so ``key`` should always be a plain identifier here. Assert it
+            # rather than interpolate a raw key into a Jinja reference: a key such
+            # as ``a }}{{ x`` would otherwise close the placeholder and inject a
+            # live construct that the output gate cannot distinguish from a
+            # legitimate variable.
+            if not is_safe_loop_field_key(key):
+                raise ValueError(
+                    f"refusing to emit loop-item field reference for unsafe key: {key!r}"
+                )
 
             if first_key and is_list_item:
                 # First key gets the list marker

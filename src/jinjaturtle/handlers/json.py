@@ -8,7 +8,7 @@ from typing import Any
 from . import DictLikeHandler
 from .. import j2
 from ..escape import escape_jinja_literal
-from ..loop_analyzer import LoopCandidate
+from ..loop_analyzer import LoopCandidate, is_safe_loop_field_key
 
 
 class JsonHandler(DictLikeHandler):
@@ -383,6 +383,14 @@ class JsonHandler(DictLikeHandler):
         ]  # first line has no indent; we prepend `inner` when emitting
         for i, key in enumerate(keys):
             comma = "," if i < len(keys) - 1 else ""
+            # Defence in depth: never interpolate a raw source key into an
+            # ``item_var.key`` reference. A key such as ``a }}{{ x`` would break
+            # out of the value placeholder and inject a live construct that the
+            # output-safety gate cannot distinguish from a legitimate variable.
+            if not is_safe_loop_field_key(key):
+                raise ValueError(
+                    f"refusing to emit loop-item field reference for unsafe key: {key!r}"
+                )
             # The literal key text is emitted verbatim into the template; escape any
             # Jinja markup in it. The value side ({item_var}.{key}) is constrained by
             # the output safety gate's dotted-name allowlist, which fails closed on
