@@ -162,3 +162,44 @@ def test_folder_mode_skips_unparseable_file(tmp_path: Path) -> None:
     assert "localhost" in defaults_yaml
     assert "good.json" in defaults_yaml
     assert outputs
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "a: &a [*a]\n",  # self-referential sequence alias
+        "root: &r\n  child: *r\n",  # self-referential mapping alias
+    ],
+)
+def test_recursive_yaml_is_rejected_cleanly(tmp_path: Path, content: str) -> None:
+    """A recursive YAML anchor must fail as a clean ConfigParseError.
+
+    PyYAML's safe_load builds a self-referential object from a recursive anchor;
+    JinjaTurtle's downstream walks (flatten, timestamp-stringify, template gen)
+    would otherwise blow the stack with a RecursionError traceback. Harvested
+    config is attacker-influenceable, so this must fail closed.
+    """
+    src = tmp_path / "cyclic.yaml"
+    src.write_text(content, encoding="utf-8")
+    with pytest.raises(ConfigParseError):
+        parse_config(src, "yaml")
+
+
+def test_recursive_yaml_cli_exits_nonzero_without_traceback(tmp_path: Path) -> None:
+    src = tmp_path / "cyclic.yaml"
+    src.write_text("a: &a [*a]\n", encoding="utf-8")
+    res = _run_cli([str(src), "-f", "yaml", "-r", "role"])
+    assert res.returncode != 0
+    assert "Traceback" not in res.stderr
+    assert "RecursionError" not in res.stderr
+
+
+def test_shared_noncyclic_yaml_aliases_still_work(tmp_path: Path) -> None:
+    """A shared (acyclic) anchor referenced multiple times is a DAG, not a
+    cycle, and must still parse and template normally."""
+    src = tmp_path / "shared.yaml"
+    src.write_text("base: &b\n  x: 1\na: *b\nc: *b\n", encoding="utf-8")
+    fmt, parsed = parse_config(src, "yaml")
+    assert fmt == "yaml"
+    assert parsed["a"] == {"x": 1}
+    assert parsed["c"] == {"x": 1}

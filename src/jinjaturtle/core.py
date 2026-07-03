@@ -375,6 +375,10 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
         raise ValueError(f"Unsupported config format: {fmt}")
     try:
         parsed = handler.parse(path)
+        # Make sure datetime objects are treated as strings (TOML, YAML). This
+        # walks the parsed object recursively, so keep it inside the try where a
+        # RecursionError from a pathological structure is normalised below.
+        parsed = _stringify_timestamps(parsed)
     except ConfigParseError:
         raise
     except _MALFORMED_CONFIG_ERRORS as exc:
@@ -391,8 +395,16 @@ def parse_config(path: Path, fmt: str | None = None) -> tuple[str, Any]:
         # attempted XXE/entity-expansion attack and must propagate unchanged so
         # callers (and tests) can distinguish "malformed" from "malicious".
         raise ConfigParseError(f"could not parse {path} as {fmt}: {exc}") from exc
-    # Make sure datetime objects are treated as strings (TOML, YAML)
-    parsed = _stringify_timestamps(parsed)
+    except RecursionError as exc:
+        # A deeply-nested or self-referential structure (e.g. a recursive YAML
+        # anchor) can exhaust the Python stack while walking the parsed object.
+        # The YAML handler already rejects reference cycles up front; this is a
+        # format-agnostic backstop so any such input fails closed with a clean
+        # message instead of a stack-overflow traceback.
+        raise ConfigParseError(
+            f"could not parse {path} as {fmt}: input is too deeply nested "
+            "or self-referential"
+        ) from exc
 
     return fmt, parsed
 

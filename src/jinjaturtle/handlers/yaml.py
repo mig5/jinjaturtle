@@ -11,6 +11,36 @@ from ..loop_analyzer import is_safe_loop_field_key
 from ..loop_analyzer import LoopCandidate
 
 
+def _reject_recursive_structure(obj: Any) -> None:
+    """Raise ``yaml.YAMLError`` if *obj* contains a reference cycle.
+
+    A recursive YAML anchor (``a: &a [*a]``) produces a container that contains
+    itself. Every consumer in JinjaTurtle walks the parsed object depth-first,
+    so a cycle would raise ``RecursionError`` deep in unrelated code. Detect it
+    up front by tracking the ``id()`` of containers on the current descent path;
+    a repeat means a cycle. ``yaml.YAMLError`` is raised so ``parse_config``
+    normalises it into a clean ``ConfigParseError`` like any other malformed
+    input, rather than surfacing a stack-overflow traceback.
+    """
+
+    on_path: set[int] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, (dict, list)):
+            marker = id(node)
+            if marker in on_path:
+                raise yaml.YAMLError(
+                    "recursive/self-referential YAML structure is not supported"
+                )
+            on_path.add(marker)
+            children = node.values() if isinstance(node, dict) else node
+            for child in children:
+                walk(child)
+            on_path.discard(marker)
+
+    walk(obj)
+
+
 class YamlHandler(DictLikeHandler):
     """
     YAML handler that can generate both scalar templates and loop-based templates.
@@ -21,7 +51,16 @@ class YamlHandler(DictLikeHandler):
 
     def parse(self, path: Path) -> Any:
         text = path.read_text(encoding="utf-8")
-        return yaml.safe_load(text) or {}
+        parsed = yaml.safe_load(text) or {}
+        # PyYAML's safe_load happily builds *recursive* structures from an anchor
+        # that references itself (e.g. ``a: &a [*a]``). Downstream flattening,
+        # timestamp-stringifying and template generation all walk the parsed
+        # object recursively and would blow the Python stack (RecursionError) on
+        # such input. JinjaTurtle is regularly pointed at harvested,
+        # attacker-influenceable config, so reject a self-referential document
+        # cleanly here rather than crashing later.
+        _reject_recursive_structure(parsed)
+        return parsed
 
     def generate_jinja2_template(
         self,
