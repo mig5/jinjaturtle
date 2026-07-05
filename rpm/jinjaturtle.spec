@@ -1,4 +1,4 @@
-%global upstream_version 0.5.7
+%global upstream_version 0.7.0
 
 Name:           jinjaturtle
 Version:        %{upstream_version}
@@ -42,6 +42,8 @@ Convert config files into Ansible defaults and Jinja2 templates.
 %{_bindir}/jinjaturtle
 
 %changelog
+* Sun Jul 05 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
+- Much hardening
 * Wed Jun 24 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
 - More hardening
 * Tue Jun 23 2026 Miguel Jacq <mig@mig5.net> - %{version}-%{release}
