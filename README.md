@@ -275,7 +275,4 @@ management system!
 
 ## Found a bug, have a suggestion?
 
-You can e-mail me; see `pyproject.toml` for details. You can also contact me on
-the Fediverse:
-
-https://goto.mig5.net/@mig5
+You can e-mail me; see `pyproject.toml` for details.
